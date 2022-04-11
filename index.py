@@ -3,7 +3,7 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from flask import g
+import random
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -68,6 +68,7 @@ init_deck = {
 }
 plays = {}
 main_channel = {}
+player_turn = []
 
 
 @client.event
@@ -102,15 +103,16 @@ async def on_message(message):
     channel = message.channel
     guild = message.guild
     if str(message.author) != 'ProjectBeta#6332':
-        print(str(channel.name))
+        print(str(channel.name), username, user_message)
         if str(channel.name) == 'boardgame':
             if state[guild.id][0] == 'ready':
                 if user_message == '!play' or user_message == '!p':
-                    await channel.send('Select 1 game')
+                    message_to_send = '```Select a game'
                     state[guild.id][0] = 'waiting'
                     for i in range(len(games)):
-                        await channel.send(str(i+1) + ' : ' + games[i])
-                    await channel.send('c : Cancel')
+                        message_to_send += '\n' + str(i+1) + ' : ' + games[i]
+                    message_to_send += '\nc : Cancel```'
+                    await channel.send(message_to_send)
                     host_id[guild.id] = message.author.id
                     print(user_message, username)
             elif state[guild.id][0] == 'waiting' and message.author.id == host_id[guild.id]:
@@ -205,8 +207,6 @@ async def create_player_text_channel(guild, user):
     channel = await guild.create_text_channel(str(user).split('#')[0] + str(user).split('#')[1], overwrites=overwrites)
     return channel
 
-import random
-
 def init(game, guild_id):
     deck[guild_id] = init_deck[game].copy()
     random.shuffle(deck[guild_id])
@@ -233,7 +233,7 @@ async def on_raw_reaction_remove(payload):
                 plays[guild_id].remove(message_id)
                 print(payload.member, plays[guild_id][payload.member])
 
-async def game_action(game):
+async def game_action(game, action):
     if game == 'exploding kittens':
         
         pass
