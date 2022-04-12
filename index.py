@@ -83,6 +83,7 @@ hands = {}
 double_turn = {}
 skip_turn = {}
 favor = {}
+defuse = {}
 
 
 @client.event
@@ -116,6 +117,7 @@ async def on_ready():
         double_turn[guild.id] = False
         skip_turn[guild.id] = False
         favor[guild.id] = False
+        defuse[guild.id] = {}
 
 
 @client.event
@@ -192,7 +194,7 @@ async def on_raw_reaction_add(payload):
                     start_when_ready[guild_id] = True
         if state[guild_id][0] == 'init':
             state[guild_id][0] = 'playing'
-            if state[guild_id][1] == 'Exploding Kittens':
+            if state[guild_id][1] == games[0]:
                 init(state[guild_id][1], guild_id)
                 await channel.purge()
                 print(deck[guild_id])
@@ -201,13 +203,18 @@ async def on_raw_reaction_add(payload):
                     channel = await create_player_text_channel(guild, player)
                     player_channels[guild_id][player] = channel
                     plays[guild_id][player] = []
+                    hands[guild_id][player] = []
+                    defuse[guild_id][player] = []
                 for player in player_channels[guild_id]:
                     message = await player_channels[guild_id][player].send('defuse')
+                    hands[guild.id][player].append('defuse')
+                    defuse[guild.id][player].append(message)
                 for i in range(4):
                     for player in player_channels[guild_id]:
                         message = await player_channels[guild_id][player].send(deck[guild_id][0])
                         if 'card' not in deck[guild_id][0] and deck[guild_id][0] != 'nope':
                             await message.add_reaction('☑️')
+                        hands[guild.id][player].append(deck[guild_id][0])
                         deck[guild_id] = deck[guild_id][1:]
                 for i in range(len(players[guild_id]) - 1):
                     deck[guild_id].append('bomb')
@@ -249,61 +256,71 @@ async def game_action(guild, game, player, favor_target=False):
     print(str(player), str(player_turn[guild.id][0]))
     if player == player_turn[guild.id][0]:
         if game == games[0]:
-            while(True):
-                if len(plays[guild.id][player]) != 0:
-                    if favor_target:
-                        if len(hands[guild.id][favor_target]) != 0:
-                            return
-                    if not double_turn[guild.id]:
-                        print('not double')
-                        player_turn[guild.id].append(player)
-                        player_turn[guild.id] = player_turn[guild.id][1:]
-                        print('turn list')
-                        for i in range(len(player_turn[guild.id])):
-                            print(str(player_turn[guild.id][i]))
-                        print('\n')
-                    else:
-                        double_turn[guild.id] = False
-                    message_id = plays[guild.id][player][0]
-                    plays[guild.id][player] = plays[guild.id][player][1:]
-                    channel = player_channels[guild.id][player]
-                    action_container = await channel.fetch_message(message_id)
-                    action = action_container.content
-                    print(action)
-                    if action == 'attack':
-                        double_turn[guild.id] = True
-                        skip_turn[guild.id] = True
-                    elif action == 'skip':
-                        skip_turn[guild.id] = True
-                    elif action == 'see the future':
-                        future_message = (
-                            '```' + deck[guild.id][0] +
-                            '\n' + deck[guild.id][1] + 
-                            '\n' + deck[guild.id][2] + '```')
-                        future_message = await player_channels[guild.id][player].send(future_message)
-                    elif action == 'favor':
-                        favor = True
-                        state[guild.id][0] = 'select favor target'
-                        favor_target_message = '```'
-                        order = 0
-                        for member in players[guild.id]:
-                            if member != player:
-                                favor_target_message += '\n' + str(order) + ' : ' + str(member)
-                                order += 1
-                                favor_target_list.append(member)
-                        member += '```'
-                        await main_channel.send(favor_target_message)
-                    elif action == 'draw':
-                        await main_channel[guild.id].send(action + '!')
-                        print(player_turn[guild.id], 'next turn!')
-                        await main_channel[guild.id].send(player_turn[guild.id][0].mention + ' turn!')
-                        message = await player_channels[guild.id][player_turn[guild.id][0]].send('draw')
-                        await message.add_reaction('☑️')
-                        await game_action(guild, game, player_turn[guild.id][0])
-                    await action_container.delete()
-                    break
+            if len(plays[guild.id][player]) != 0:
+                if favor_target:
+                    if len(hands[guild.id][favor_target]) != 0:
+                        return
+                if not double_turn[guild.id]:
+                    print('not double')
+                    player_turn[guild.id].append(player)
+                    player_turn[guild.id] = player_turn[guild.id][1:]
+                    print('turn list')
+                    for i in range(len(player_turn[guild.id])):
+                        print(str(player_turn[guild.id][i]))
+                    print('\n')
                 else:
-                    break
+                    double_turn[guild.id] = False
+                message_id = plays[guild.id][player][0]
+                plays[guild.id][player] = plays[guild.id][player][1:]
+                channel = player_channels[guild.id][player]
+                action_container = await channel.fetch_message(message_id)
+                action = action_container.content
+                print(action)
+                if action == 'attack':
+                    double_turn[guild.id] = True
+                    skip_turn[guild.id] = True
+                elif action == 'skip':
+                    skip_turn[guild.id] = True
+                elif action == 'see the future':
+                    future_message = (
+                        '```' + deck[guild.id][0] +
+                        '\n' + deck[guild.id][1] + 
+                        '\n' + deck[guild.id][2] + '```')
+                    future_message = await player_channels[guild.id][player].send(future_message)
+                elif action == 'favor':
+                    favor = True
+                    state[guild.id][0] = 'select favor target'
+                    favor_target_message = '```'
+                    order = 0
+                    for member in players[guild.id]:
+                        if member != player:
+                            favor_target_message += '\n' + str(order) + ' : ' + str(member)
+                            order += 1
+                            favor_target_list.append(member)
+                    member += '```'
+                    await main_channel.send(favor_target_message)
+                elif action == 'draw':
+                    await main_channel[guild.id].send(action + '!')
+                    card = deck[guild.id][0]
+                    deck[guild.id] = deck[guild.id][1:]
+                    if card == 'bomb':
+                        await main_channel.send(player.mention + ' got a bomb!')
+                        if 'defuse' not in hands[guild.id][player]:
+                            await main_channel.send(player.mention + ' doesn\'t has a defuse\n' + '😵')
+                            player_turn[guild.id].remove(player)
+                        else:
+                            await main_channel.send(player.mention + 'has a defuse\n' + 'please enter number between -1 and 99 to put a bomb back to deck (0 = top of deck, -1 = bottom of deck)')
+                            defuse[guild.id][player].pop()
+                    else:
+                        card_message = await channel.send(card)
+                        await card_message.add_reaction('☑️')
+                        hands[guild.id][player].append(card)
+                    print(player_turn[guild.id], 'next turn!')
+                    await main_channel[guild.id].send(player_turn[guild.id][0].mention + ' turn!')
+                    message = await player_channels[guild.id][player_turn[guild.id][0]].send('draw')
+                    await message.add_reaction('☑️')
+                    await game_action(guild, game, player_turn[guild.id][0])
+                await action_container.delete()
 
 async def create_player_text_channel(guild, user):
     print(guild, user)
