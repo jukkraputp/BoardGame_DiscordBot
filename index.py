@@ -250,37 +250,6 @@ async def on_raw_reaction_add(payload):
     elif channel in player_channels_list:
         if state[guild_id][1] == games[0]:
             await ExplodingKittens(payload, guild_id, channel, message_id)
-            """ print(str(payload.member).split('#')[0].lower() +
-                  str(payload.member).split('#')[1],
-                  str(channel.name))
-            if str(channel.name) == str(payload.member).split('#')[0].lower() + str(payload.member).split('#')[1]:
-                if str(payload.emoji) == '☑️':
-                    plays[guild_id][payload.member].append(message_id)
-                    print(payload.member, plays[guild_id][payload.member])
-                if str(payload.emoji) == '🃏':
-                    for card_message in hands[guild_id][payload.member]:
-                        await card_message.remove_reaction('🃏', client.user)
-                    print('got favor!')
-                    sender_channel = player_channels[guild_id][payload.member]
-                    sender_message = await sender_channel.fetch_message(message_id)
-                    card = str(sender_message.content)
-                    favor_channel = player_channels[guild_id][favor_user[guild_id]]
-                    card_message = await favor_channel.send(card)
-                    if 'card' not in card and card != 'defuse' and card != 'nope':
-                        await card_message.add_reaction('☑️')
-                    hands[guild_id][favor_user[guild_id]].append(card_message)
-                    hands[guild_id][payload.member].remove(sender_message)
-                    favor[guild_id] = False
-                    temp_favor_user = favor_user[guild_id]
-                    favor_user[guild_id] = None
-                    favor_target[guild_id] = None
-                    favor_target_list[guild_id] = []
-                    state[guild_id][0] = 'playing'
-                    await game_action(client.get_guild(guild_id), now_playing, temp_favor_user)
-            else:
-                await main_channel[guild_id].send('server owner is now cheating')
-            await game_action(client.get_guild(guild_id), state[guild_id][1], payload.member)
-         """
 
 async def ExplodingKittens(payload, guild_id, channel, message_id):
     print(str(payload.member).split('#')[0].lower() +
