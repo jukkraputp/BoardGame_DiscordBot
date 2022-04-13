@@ -1,4 +1,5 @@
 import os
+from pickle import TRUE
 
 import discord
 from discord.ext import commands
@@ -6,6 +7,8 @@ from dotenv import load_dotenv
 import random
 
 from flask import g
+
+from ExplodingKittens import ExplodingKittens
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -96,6 +99,7 @@ favor_target = {}
 turn_message = {}
 future_message = {}
 
+
 @client.event
 async def on_ready():
     print(f'{client.user} has connected to Discord!')
@@ -138,6 +142,23 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    global players
+    global player_channels
+    global plays, hands
+    global client
+    global favor
+    global favor_user
+    global favor_target
+    global favor_target_list
+    global state
+    global main_channel
+    global turn_message
+    global deck
+    global defuse
+    global double_turn
+    global next_turn
+    global player_turn
+    global future_message
     username = str(message.author).split('#')[0]
     user_message = str(message.content)
     channel = message.channel
@@ -176,12 +197,62 @@ async def on_message(message):
             elif state[guild.id][0] == 'select favor target' and message.author == favor_user[guild.id] and int(user_message) - 1 < len(favor_target_list[guild.id]):
                 favor_target[guild.id] = favor_target_list[guild.id][int(
                     user_message) - 1]
-                await game_action(guild, now_playing[guild.id], message.author)    
+                [players,
+                 player_channels,
+                 plays, hands,
+                 client,
+                 favor,
+                 favor_user,
+                 favor_target,
+                 favor_target_list,
+                 state,
+                 main_channel,
+                 turn_message,
+                 deck,
+                 defuse,
+                 double_turn,
+                 next_turn,
+                 player_turn,
+                 future_message] = await ExplodingKittens(players,
+                                                          player_channels,
+                                                          plays, hands,
+                                                          client,
+                                                          favor,
+                                                          favor_user,
+                                                          favor_target,
+                                                          favor_target_list,
+                                                          state,
+                                                          main_channel,
+                                                          turn_message,
+                                                          deck,
+                                                          defuse,
+                                                          double_turn,
+                                                          next_turn,
+                                                          player_turn,
+                                                          future_message,
+                                                          guild_id=guild.id,
+                                                          GAME_ACTION=True, user=message.author)
 
 
 @client.event
 async def on_raw_reaction_add(payload):
+    global players
+    global player_channels
+    global plays, hands
+    global client
+    global favor
+    global favor_user
+    global favor_target
+    global favor_target_list
+    global state
+    global main_channel
+    global turn_message
+    global deck
+    global defuse
+    global double_turn
+    global next_turn
     global player_turn
+    global future_message
     channel_id = payload.channel_id
     guild_id = payload.guild_id
     user_id = payload.user_id
@@ -249,9 +320,42 @@ async def on_raw_reaction_add(payload):
                 await main_channel[guild_id].send(player_turn[guild_id][0].mention + ' turn!')
     elif channel in player_channels_list:
         if state[guild_id][1] == games[0]:
-            await ExplodingKittens(payload, guild_id, channel, message_id)
+            [players,
+             player_channels,
+             plays, hands,
+             client,
+             favor,
+             favor_user,
+             favor_target,
+             favor_target_list,
+             state,
+             main_channel,
+             turn_message,
+             deck,
+             defuse,
+             double_turn,
+             next_turn,
+             player_turn,
+             future_message] = await ExplodingKittens(players,
+                                                      player_channels,
+                                                      plays, hands,
+                                                      client,
+                                                      favor,
+                                                      favor_user,
+                                                      favor_target,
+                                                      favor_target_list,
+                                                      state,
+                                                      main_channel,
+                                                      turn_message,
+                                                      deck,
+                                                      defuse,
+                                                      double_turn,
+                                                      next_turn,
+                                                      player_turn,
+                                                      future_message,
+                                                      payload=payload, guild_id=guild_id, channel=channel, message_id=message_id)
 
-async def ExplodingKittens(payload, guild_id, channel, message_id):
+""" async def ExplodingKittens(payload, guild_id, channel, message_id):
     print(str(payload.member).split('#')[0].lower() +
             str(payload.member).split('#')[1],
             str(channel.name))
@@ -284,10 +388,10 @@ async def ExplodingKittens(payload, guild_id, channel, message_id):
         await main_channel[guild_id].send('server owner is now cheating')
     await game_action(client.get_guild(guild_id), state[guild_id][1], payload.member)
 
-    return
+    return """
 
 
-async def game_action(guild, game, player):
+""" async def game_action(guild, game, player):
     print(guild, player, game)
     global favor
     global next_turn
@@ -315,20 +419,20 @@ async def game_action(guild, game, player):
                 action_container = await channel.fetch_message(message_id)
                 action = action_container.content
                 if action == 'attack':
-                    await ATTACK(guild, game, player, channel)
+                    await ExplodingKittens.ATTACK(guild, game, player, channel)
                 elif action == 'skip':
-                    await SKIP(guild, game, player, channel)
+                    await ExplodingKittens.SKIP(guild, game, player, channel)
                 elif action == 'see the future':
-                    await SEE_THE_FUTURE(guild, game, player, channel)
+                    await ExplodingKittens.SEE_THE_FUTURE(guild, game, player, channel)
                 elif action == 'shuffle':
-                    await SHUFFLE(guild, game, player, channel)
+                    await ExplodingKittens.SHUFFLE(guild, game, player, channel)
                 elif action == 'favor':
-                    await FAVOR(guild, game, player, channel)
+                    await ExplodingKittens.FAVOR(guild, game, player, channel)
                     hands[guild.id][player].remove(action_container)
                     await action_container.delete()
                     return
                 elif action == 'draw':
-                    await DRAW(guild, game, player, channel)
+                    await ExplodingKittens.DRAW(guild, game, player, channel)
                 if action != 'draw':
                     hands[guild.id][player].remove(action_container)
                 await action_container.delete()
@@ -351,10 +455,10 @@ async def game_action(guild, game, player):
             print(player_turn[guild.id][0],
                   next_turn[guild.id], double_turn[guild.id])
             if len(plays[guild.id][player_turn[guild.id][0]]) != 0:
-                await game_action(guild, game, player_turn[guild.id][0])
+                await game_action(guild, game, player_turn[guild.id][0]) """
 
 
-async def DRAW(guild, game, player, channel):
+""" async def DRAW(guild, game, player, channel):
     global next_turn
     global player_turn
     if game == games[0]:
@@ -450,7 +554,7 @@ async def THREE_OF_A_KIND(guild, game, player, channel):
 
 async def FIVE_UNIQUE(guild, game, player, channel):
     if game == games[0]:
-        return
+        return """
 
 
 async def create_player_text_channel(guild, user):
