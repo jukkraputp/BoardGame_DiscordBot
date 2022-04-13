@@ -2,6 +2,8 @@ import random
 import time
 import asyncio
 
+import discord
+
 game_state = [
     'playing',
     'favor',
@@ -9,6 +11,23 @@ game_state = [
     'nope'
 ]
 nope_user = None
+card_pic = {
+    'Exploding Kittens':{
+        'nope': 'Assets/ExplodingKittens/Nope/',
+        'skip': 'Assets/ExplodingKittens/Skip/',
+        'attack': 'Assets/ExplodingKittens/Attack/',
+        'favor': 'Assets/ExplodingKittens/Favor/',
+        'see the future': 'Assets/ExplodingKittens/SeeTheFuture/',
+        'shuffle': 'Assets/ExplodingKittens/Shuffle/',
+        'defuse': 'Assets/ExplodingKittens/Defuse/',
+        'bomb': 'Assets/ExplodingKittens/Bomb/',
+        'card1': 'Assets/ExplodingKittens/Card1/',
+        'card2': 'Assets/ExplodingKittens/Card2/',
+        'card3': 'Assets/ExplodingKittens/Card3/',
+        'card4': 'Assets/ExplodingKittens/Card4/',
+        'card5': 'Assets/ExplodingKittens/Card5/',
+    }
+}
 
 
 async def ExplodingKittens(players,
@@ -228,7 +247,14 @@ async def DRAW(guild, game, player, channel):
                         HANDS[guild.id][player].remove(card)
                         break
         else:
-            card_message = await channel.send(card)
+            add = 1
+            if card == 'nope':
+                add = 5
+            elif card == 'defuse'  or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
+                add = 3
+            elif card == 'attack':
+                add = 4
+            card_message = await channel.send(file=discord.File(card_pic[game][card] + str(random.randint(1,add)) + '.png'))
             if 'card' not in card and card != 'defuse' and card != 'nope':
                 await card_message.add_reaction('☑️')
             elif card == 'defuse':

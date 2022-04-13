@@ -106,6 +106,23 @@ game_state = {
         'bomb'
     ]
 }
+card_pic = {
+    'Exploding Kittens':{
+        'nope': 'Assets/ExplodingKittens/Nope/',
+        'skip': 'Assets/ExplodingKittens/Skip/',
+        'attack': 'Assets/ExplodingKittens/Attack/',
+        'favor': 'Assets/ExplodingKittens/Favor/',
+        'see the future': 'Assets/ExplodingKittens/SeeTheFuture/',
+        'shuffle': 'Assets/ExplodingKittens/Shuffle/',
+        'defuse': 'Assets/ExplodingKittens/Defuse/',
+        'bomb': 'Assets/ExplodingKittens/Bomb/',
+        'card1': 'Assets/ExplodingKittens/Card1/',
+        'card2': 'Assets/ExplodingKittens/Card2/',
+        'card3': 'Assets/ExplodingKittens/Card3/',
+        'card4': 'Assets/ExplodingKittens/Card4/',
+        'card5': 'Assets/ExplodingKittens/Card5/',
+    }
+}
 # ----------------------------------------------------------------
 
 
@@ -359,12 +376,19 @@ async def on_raw_reaction_add(payload):
                     defuse[guild_id][player] = []
                     nope_messages[guild_id][player] = []
                 for player in player_channels[guild_id]:
-                    message = await player_channels[guild_id][player].send('defuse')
+                    message = await player_channels[guild_id][player].send(file=discord.File(card_pic[games[0]]['defuse'] + str(random.randint(1,3)) + '.png'))
                     hands[guild_id][player].append(message)
                     defuse[guild_id][player].append(message)
                 for i in range(4):
                     for player in player_channels[guild_id]:
-                        message = await player_channels[guild_id][player].send(deck[guild_id][0])
+                        add = 1
+                        if deck[guild_id][0] == 'nope':
+                            add = 5
+                        elif deck[guild_id][0] == 'defuse' or deck[guild_id][0] == 'see the future' or deck[guild_id][0] == 'shuffle' or deck[guild_id][0] == 'favor' or deck[guild_id][0] == 'skip' or deck[guild_id][0] == 'bomb':
+                            add = 3
+                        elif deck[guild_id][0] == 'attack':
+                            add = 4
+                        message = await player_channels[guild_id][player].send(file=discord.File(card_pic[games[0]][deck[guild_id][0]] + str(random.randint(1,add)) + '.png'))
                         if 'card' not in deck[guild_id][0] and deck[guild_id][0] != 'nope':
                             await message.add_reaction('☑️')
                         elif deck[guild_id][0] == 'nope':
