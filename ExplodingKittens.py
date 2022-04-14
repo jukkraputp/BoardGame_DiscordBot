@@ -12,7 +12,7 @@ game_state = [
 ]
 nope_user = None
 card_pic = {
-    'Exploding Kittens':{
+    'Exploding Kittens': {
         'nope': 'Assets/ExplodingKittens/Nope/',
         'skip': 'Assets/ExplodingKittens/Skip/',
         'attack': 'Assets/ExplodingKittens/Attack/',
@@ -28,6 +28,7 @@ card_pic = {
         'card5': 'Assets/ExplodingKittens/Card5/',
     }
 }
+wait_time = 5
 
 
 async def ExplodingKittens(players,
@@ -49,8 +50,10 @@ async def ExplodingKittens(players,
                            nope_able,
                            nope_messages,
                            client,
+                           discard_pile,
                            payload=None, guild_id=None, channel=None, message_id=None,
-                           GAME_ACTION=False, user=None):
+                           GAME_ACTION=False, user=None,
+                           pair=False, triple=False, five=False, container=[]):
 
     global CLIENT
     CLIENT = client
@@ -94,7 +97,18 @@ async def ExplodingKittens(players,
     NOPE_MESSAGES = nope_messages
     global GUILD
     GUILD = CLIENT.get_guild(guild_id)
-    if GAME_ACTION:
+    special = False
+    global DISCARD_PILE
+    DISCARD_PILE = discard_pile
+    if pair:
+        special = 'pair'
+    elif triple:
+        special = 'triple'
+    elif five:
+        special = 'five'
+    if special:
+        await SPECIAL(GUILD, user, special, container)
+    elif GAME_ACTION:
         await game_action(GUILD, 'Exploding Kittens', user)
     else:
         await GAME(payload, guild_id, channel, message_id)
@@ -132,14 +146,15 @@ async def GAME(payload, guild_id, channel, message_id):
             add = 1
             if card == 'nope':
                 add = 5
-            elif card == 'defuse'  or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
+            elif card == 'defuse' or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
                 add = 3
             elif card == 'attack':
                 add = 4
             card_message = await favor_channel.send(card_pic[card])
             if 'card' not in card and card != 'defuse' and card != 'nope':
                 await card_message.add_reaction('☑️')
-            HANDS[guild_id][FAVOR_USER[guild_id]].append(content=card, file=discord.File(card_pic['Exploding Kittens'][card] + str(random.randint(1,add)) + '.png'))
+            HANDS[guild_id][FAVOR_USER[guild_id]].append(content=card, file=discord.File(
+                card_pic['Exploding Kittens'][card] + str(random.randint(1, add)) + '.png'))
             HANDS[guild_id][payload.member].remove(sender_message)
             for card_message in HANDS[guild_id][payload.member]:
                 await card_message.remove_reaction('🃏', CLIENT.user)
@@ -158,7 +173,7 @@ async def GAME(payload, guild_id, channel, message_id):
     return
 
 
-async def game_action(guild, game, player):
+async def game_action(guild, game, player, special=False):
     print(guild, game, player)
     global Favor
     global NEXT_TURN
@@ -204,6 +219,7 @@ async def game_action(guild, game, player):
                     await DRAW(guild, game, player, channel)
                 if action != 'draw':
                     HANDS[guild.id][player].remove(action_container)
+                    await DISCARD(guild, action)
                 await action_container.delete()
             if NEXT_TURN[guild.id]:
                 if FUTURE_MESSAGE[guild.id] != None:
@@ -236,8 +252,7 @@ async def DRAW(guild, game, player, channel):
             if len(DEFUSE[guild.id][player]) == 0:
                 await MAIN_CHANNEL[guild.id].send(player.mention + ' doesn\'t has a defuse\n' + '😵')
                 PLAYER_TURN[guild.id].remove(player)
-                if len(PLAYER_TURN[guild.id]) == 1:
-                    PLAYERS[guild.id] = []
+                await DISCARD(guild, card)
             else:
                 await MAIN_CHANNEL[guild.id].send(player.mention + ' has a defuse\n' + 'please enter number between -1 and 99 to put a bomb back to DECK (0 = top of DECK, -1 = bottom of DECK)')
                 STATE[guild.id][0] = game_state[2]
@@ -247,30 +262,16 @@ async def DRAW(guild, game, player, channel):
                     if str(card.content) == 'defuse':
                         HANDS[guild.id][player].remove(card)
                         break
+            DISCARD(guild, 'defuse')
         else:
-            add = 1
-            if card == 'nope':
-                add = 5
-            elif card == 'defuse'  or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
-                add = 3
-            elif card == 'attack':
-                add = 4
-            card_message = await channel.send(content=card, file=discord.File(card_pic[game][card] + str(random.randint(1,add)) + '.png'))
-            if 'card' not in card and card != 'defuse' and card != 'nope':
-                await card_message.add_reaction('☑️')
-            elif card == 'defuse':
-                DEFUSE[guild.id][player].append(card_message)
-            elif card == 'nope':
-                NOPE_ABLE[guild.id] += 1
-                NOPE_MESSAGES[guild.id][player].append(card_message)
-            HANDS[guild.id][player].append(card_message)
+            await ADD_CARD(guild, channel, player, card)
         NEXT_TURN[guild.id] = True
 
 
 async def WAIT_FOR_NOPE(guild):
     while(True):
         try:
-            reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
+            reaction, user = await CLIENT.wait_for('reaction_add', timeout=wait_time, check=check)
             nope_user = user
             print(str(nope_user) + ' use nope')
             pass
@@ -292,6 +293,7 @@ def check(reaction, user):
     if user != CLIENT.user:
         return len(NOPE_MESSAGES[GUILD.id][user]) > 0 and str(reaction.emoji) == '🚫'
     return False
+
 
 async def SEE_THE_FUTURE(guild, game, player, channel):
     global FUTURE_MESSAGE
@@ -402,16 +404,183 @@ async def ATTACK(guild, game, player, channel):
         await TURN_MESSAGE[guild.id].delete()
 
 
-async def PAIR(guild, game, player, channel):
-    if game == 'Exploding Kittens':
-        return
+# \/ special actions ----------------------------------------------------------------
 
 
-async def THREE_OF_A_KIND(guild, game, player, channel):
-    if game == 'Exploding Kittens':
-        return
+async def SPECIAL(guild, player, special, card_list):
+    action_message = await MAIN_CHANNEL[guild.id].send(special.upper() + '!')
+    await action_message.add_reaction('🚫')
+    if NOPE_ABLE[guild.id]:
+        await WAIT_FOR_NOPE(guild)
+        if STATE[guild.id][0] == game_state[3]:
+            print('get Noped')
+            STATE[guild.id][0] = game_state[0]
+            await action_message.reply('Failed!')
+            return
+    await action_message.reply('Successful!')
+    channel = PLAYER_CHANNELS[guild.id][player]
+    if special == 'pair':
+        await PAIR(guild, player, channel, card_list)
+    elif special == 'triple':
+        await TRIPLE(guild, player, channel, card_list)
+    elif special == 'five':
+        await FIVE(guild, player, channel, card_list)
 
 
-async def FIVE_UNIQUE(guild, game, player, channel):
-    if game == 'Exploding Kittens':
-        return
+def is_player_turn_reaction(reaction, user, message):
+    return user == PLAYER_TURN[GUILD.id][0]
+
+
+async def WAIT_SPECIAL():
+    try:
+        reaction, user = await CLIENT.wait_for('reaction_add', timeout=wait_time, check=is_player_turn_reaction)
+        return reaction.message
+    except asyncio.TimeoutError:
+        return None
+
+
+def is_player_turnNchannel_message(m):
+    return m.author == PLAYER_TURN[GUILD.id][0] and PLAYER_CHANNELS[GUILD.id][m.author] == m.channel
+
+
+async def WAIT_SELECT_TARGET(targets):
+    message = await CLIENT.wait_for('message', check=is_player_turnNchannel_message)
+    index = int(message.content) - 1
+    if index >= 0 and index < len(targets):
+        return targets[index]
+
+
+async def PAIR(guild, player, channel, card_list):
+    messages = []
+    for card in card_list:
+        message = await channel.send(card)
+        await message.add_reaction('☑️')
+        messages.append(message)
+    card_message = await WAIT_SPECIAL()
+    if card_message is None:
+        card_message = messages[0]
+    card = card_message.content
+    counter = 0
+    for hand in HANDS[guild.id][player].copy():
+        if hand.content == card:
+            counter += 1
+            HANDS[guild.id][player].remove(hand)
+        if counter == 2:
+            break
+    PAIR_TARGET_MESSAGE = '```'
+    order = 0
+    targets = []
+    for member in PLAYERS[guild.id]:
+        if member != player:
+            targets.append(member)
+            FAVOR_TARGET_message += '\n' + str(order) + ' : ' + str(member)
+            order += 1
+    PAIR_TARGET_MESSAGE += '```'
+    await MAIN_CHANNEL[guild.id].send(PAIR_TARGET_MESSAGE)
+    target = await WAIT_SELECT_TARGET(targets)
+    for message in messages:
+        await message.delete()
+    index = random.randint(0, len(HANDS[guild.id][target]))
+    target_message = HANDS[guild.id][target][index]
+    card = target_message.content
+    await REMOVE_CARD(guild, target_message, target, card)
+    await ADD_CARD(guild, channel, player, card)
+
+
+async def TRIPLE(guild, player, channel, card_list):
+    messages = []
+    for card in card_list:
+        message = await channel.send(card)
+        await message.add_reaction('☑️')
+        messages.append(message)
+    card_message = await WAIT_SPECIAL()
+    if card_message is None:
+        card_message = messages[0]
+    card = card_message.content
+    counter = 0
+    for hand in HANDS[guild.id][player].copy():
+        if hand.content == card:
+            counter += 1
+            HANDS[guild.id][player].remove(hand)
+        if counter == 3:
+            break
+    TRIPLE_TARGET_MESSAGE = '```'
+    order = 0
+    targets = []
+    for member in PLAYERS[guild.id]:
+        if member != player:
+            targets.append(member)
+            FAVOR_TARGET_message += '\n' + str(order) + ' : ' + str(member)
+            order += 1
+    TRIPLE_TARGET_MESSAGE += '```'
+    await MAIN_CHANNEL[guild.id].send(TRIPLE_TARGET_MESSAGE)
+    target = await WAIT_SELECT_TARGET(targets)
+    for message in messages:
+        await message.delete()
+    index = random.randint(0, len(HANDS[guild.id][target]))
+    target_message = HANDS[guild.id][target][index]
+    card = target_message.content
+    await REMOVE_CARD(guild, target_message, target, card)
+    await ADD_CARD(guild, channel, player, card)
+
+
+def is_player_turn_message(m):
+    return m.author == PLAYER_TURN[GUILD.id][0] and m.channel == MAIN_CHANNEL[GUILD.id]
+
+
+async def WAIT_SELECT_CARD():
+    message = await CLIENT.wait_for('message', check=is_player_turn_message)
+    index = message.content
+    return DISCARD_PILE[GUILD.id].unique()[index]
+
+
+async def FIVE(guild, player, channel, card_list):
+    for card in card_list:
+        for hand in HANDS[guild.id][player].copy():
+            if hand.content == card:
+                HANDS[guild.id][player].remove(hand)
+                await hand.delete()
+                break
+    card = await WAIT_SELECT_CARD()
+    await ADD_CARD(guild, channel, player, card)
+    for i in range(len(DISCARD_PILE[GUILD.id])):
+        card_name = DISCARD_PILE[GUILD.id][i]
+        if card_name == card:
+            DISCARD_PILE[GUILD.id].pop(i)
+            break
+
+# -----------------------------------------------------------------------------
+
+
+async def ADD_CARD(guild, channel, player, card):
+    add = 1
+    if card == 'nope':
+        add = 5
+    elif card == 'defuse' or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
+        add = 3
+    elif card == 'attack':
+        add = 4
+    game = 'Exploding Kittens'
+    card_message = await channel.send(content=card, file=discord.File(card_pic[game][card] + str(random.randint(1, add)) + '.png'))
+    if 'card' not in card and card != 'defuse' and card != 'nope':
+        await card_message.add_reaction('☑️')
+    elif card == 'defuse':
+        DEFUSE[guild.id][player].append(card_message)
+    elif card == 'nope':
+        NOPE_ABLE[guild.id] += 1
+        NOPE_MESSAGES[guild.id][player].append(card_message)
+    HANDS[guild.id][player].append(card_message)
+
+
+async def REMOVE_CARD(guild, message, player, card):
+    if card == 'defuse':
+        DEFUSE[guild.id][player].remove(message)
+    elif card == 'nope':
+        NOPE_ABLE[guild.id] -= 1
+        NOPE_MESSAGES[guild.id][player].remove(message)
+    HANDS[guild.id][player].remove(message)
+    await message.delete()
+
+
+async def DISCARD(guild, card):
+    DISCARD_PILE[guild.id].append(card)
