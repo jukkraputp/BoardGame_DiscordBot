@@ -120,23 +120,26 @@ async def ExplodingKittens(players,
 
 
 async def GAME(payload, guild_id, channel, message_id):
-    print(str(payload.member).split('#')[0].lower() +
-          str(payload.member).split('#')[1],
-          str(channel.name))
     if str(channel.name) == str(payload.member).split('#')[0].lower() + str(payload.member).split('#')[1]:
         if str(payload.emoji) == '☑️':
             PLAYS[guild_id][payload.member].append(message_id)
-            print(payload.member, PLAYS[guild_id][payload.member])
         if str(payload.emoji) == '🃏':
-            print('got favor!')
+            print(f'{payload.member} got favor!')
             sender_channel = PLAYER_CHANNELS[guild_id][payload.member]
             sender_message = await sender_channel.fetch_message(message_id)
             card = str(sender_message.content)
             favor_channel = PLAYER_CHANNELS[guild_id][FAVOR_USER[guild_id]]
-            card_message = await favor_channel.send(card)
+            add = 1
+            if card == 'nope':
+                add = 5
+            elif card == 'defuse'  or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
+                add = 3
+            elif card == 'attack':
+                add = 4
+            card_message = await favor_channel.send(card_pic[card])
             if 'card' not in card and card != 'defuse' and card != 'nope':
                 await card_message.add_reaction('☑️')
-            HANDS[guild_id][FAVOR_USER[guild_id]].append(card_message)
+            HANDS[guild_id][FAVOR_USER[guild_id]].append(content=card, file=discord.File(card_pic['Exploding Kittens'][card] + str(random.randint(1,add)) + '.png'))
             HANDS[guild_id][payload.member].remove(sender_message)
             for card_message in HANDS[guild_id][payload.member]:
                 await card_message.remove_reaction('🃏', CLIENT.user)
@@ -156,7 +159,7 @@ async def GAME(payload, guild_id, channel, message_id):
 
 
 async def game_action(guild, game, player):
-    print(guild, player, game)
+    print(guild, game, player)
     global Favor
     global NEXT_TURN
     global DOUBLE_TURN
@@ -183,6 +186,7 @@ async def game_action(guild, game, player):
                 channel = PLAYER_CHANNELS[guild.id][player]
                 action_container = await channel.fetch_message(message_id)
                 action = action_container.content
+                print(player.name, action)
                 if action == 'attack':
                     await ATTACK(guild, game, player, channel)
                 elif action == 'skip':
@@ -201,8 +205,6 @@ async def game_action(guild, game, player):
                 if action != 'draw':
                     HANDS[guild.id][player].remove(action_container)
                 await action_container.delete()
-            print(PLAYER_TURN[guild.id][0],
-                  NEXT_TURN[guild.id], DOUBLE_TURN[guild.id])
             if NEXT_TURN[guild.id]:
                 if FUTURE_MESSAGE[guild.id] != None:
                     await FUTURE_MESSAGE[guild.id].delete()
@@ -214,11 +216,10 @@ async def game_action(guild, game, player):
                     PLAYER_TURN[guild.id].append(player)
                     PLAYER_TURN[guild.id] = PLAYER_TURN[guild.id][1:]
                 await MAIN_CHANNEL[guild.id].send(PLAYER_TURN[guild.id][0].mention + ' turn!')
+                print(f'{PLAYER_TURN[guild.id][0].name} turn!')
                 message = await PLAYER_CHANNELS[guild.id][PLAYER_TURN[guild.id][0]].send('draw')
                 await message.add_reaction('☑️')
                 TURN_MESSAGE[guild.id] = message
-            print(PLAYER_TURN[guild.id][0],
-                  NEXT_TURN[guild.id], DOUBLE_TURN[guild.id])
             if len(PLAYS[guild.id][PLAYER_TURN[guild.id][0]]) != 0:
                 await game_action(guild, game, PLAYER_TURN[guild.id][0])
 
@@ -254,7 +255,7 @@ async def DRAW(guild, game, player, channel):
                 add = 3
             elif card == 'attack':
                 add = 4
-            card_message = await channel.send(file=discord.File(card_pic[game][card] + str(random.randint(1,add)) + '.png'))
+            card_message = await channel.send(content=card, file=discord.File(card_pic[game][card] + str(random.randint(1,add)) + '.png'))
             if 'card' not in card and card != 'defuse' and card != 'nope':
                 await card_message.add_reaction('☑️')
             elif card == 'defuse':
@@ -264,6 +265,27 @@ async def DRAW(guild, game, player, channel):
                 NOPE_MESSAGES[guild.id][player].append(card_message)
             HANDS[guild.id][player].append(card_message)
         NEXT_TURN[guild.id] = True
+
+
+async def WAIT_FOR_NOPE(guild):
+    while(True):
+        try:
+            reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
+            nope_user = user
+            print(str(nope_user) + ' use nope')
+            pass
+        except asyncio.TimeoutError:
+            break
+        else:
+            message = await MAIN_CHANNEL[guild.id].send(nope_user.mention + ' NOPE!')
+            await message.add_reaction('🚫')
+            nope_message = NOPE_MESSAGES[guild.id][nope_user].pop()
+            HANDS[guild.id][nope_user].remove(nope_message)
+            await nope_message.delete()
+            if STATE[guild.id][0] == game_state[3]:
+                STATE[guild.id][0] = game_state[0]
+            elif STATE[guild.id][0] == game_state[0]:
+                STATE[guild.id][0] = game_state[3]
 
 
 def check(reaction, user):
@@ -279,28 +301,13 @@ async def SEE_THE_FUTURE(guild, game, player, channel):
         action_message = await MAIN_CHANNEL[guild.id].send('see the future' + '!')
         await action_message.add_reaction('🚫')
         if NOPE_ABLE[guild.id]:
-            while(True):
-                try:
-                    reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
-                    nope_user = user
-                    print(str(reaction), str(nope_user))
-                    pass
-                except asyncio.TimeoutError:
-                    break
-                else:
-                    message = await MAIN_CHANNEL[guild.id].send(nope_user.mention + ' NOPE!')
-                    await message.add_reaction('🚫')
-                    nope_message = NOPE_MESSAGES[guild.id][nope_user].pop()
-                    HANDS[guild.id][nope_user].remove(nope_message)
-                    await nope_message.delete()
-                    if STATE[guild.id][0] == game_state[3]:
-                        STATE[guild.id][0] = game_state[0]
-                    elif STATE[guild.id][0] == game_state[0]:
-                        STATE[guild.id][0] = game_state[3]
-        if STATE[guild.id][0] == game_state[3]:
-            print('Noped')
-            STATE[guild.id][0] = game_state[0]
-            return
+            await WAIT_FOR_NOPE(guild)
+            if STATE[guild.id][0] == game_state[3]:
+                print('get Noped')
+                STATE[guild.id][0] = game_state[0]
+                await action_message.reply('Failed!')
+                return
+        await action_message.reply('Successful!')
         message = '```'
         for i in range(3):
             message += '\n' + str(i+1) + ' : ' + DECK[guild.id][i]
@@ -315,28 +322,13 @@ async def SHUFFLE(guild, game, player, channel):
         action_message = await MAIN_CHANNEL[guild.id].send('shuffle' + '!')
         await action_message.add_reaction('🚫')
         if NOPE_ABLE[guild.id]:
-            while(True):
-                try:
-                    reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
-                    nope_user = user
-                    print(str(reaction), str(nope_user))
-                    pass
-                except asyncio.TimeoutError:
-                    break
-                else:
-                    message = await MAIN_CHANNEL[guild.id].send(nope_user.mention + ' NOPE!')
-                    await message.add_reaction('🚫')
-                    nope_message = NOPE_MESSAGES[guild.id][nope_user].pop()
-                    HANDS[guild.id][nope_user].remove(nope_message)
-                    await nope_message.delete()
-                    if STATE[guild.id][0] == game_state[3]:
-                        STATE[guild.id][0] = game_state[0]
-                    elif STATE[guild.id][0] == game_state[0]:
-                        STATE[guild.id][0] = game_state[3]
-        if STATE[guild.id][0] == game_state[3]:
-            print('Noped')
-            STATE[guild.id][0] = game_state[0]
-            return
+            await WAIT_FOR_NOPE(guild)
+            if STATE[guild.id][0] == game_state[3]:
+                print('get Noped')
+                STATE[guild.id][0] = game_state[0]
+                await action_message.reply('Failed!')
+                return
+        await action_message.reply('Successful!')
         random.shuffle(DECK[guild.id])
         return
 
@@ -349,28 +341,13 @@ async def FAVOR(guild, game, player, channel):
         action_message = await MAIN_CHANNEL[guild.id].send('favor' + '!')
         await action_message.add_reaction('🚫')
         if NOPE_ABLE[guild.id]:
-            while(True):
-                try:
-                    reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
-                    nope_user = user
-                    print(str(reaction), str(nope_user))
-                    pass
-                except asyncio.TimeoutError:
-                    break
-                else:
-                    message = await MAIN_CHANNEL[guild.id].send(nope_user.mention + ' NOPE!')
-                    await message.add_reaction('🚫')
-                    nope_message = NOPE_MESSAGES[guild.id][nope_user].pop()
-                    HANDS[guild.id][nope_user].remove(nope_message)
-                    await nope_message.delete()
-                    if STATE[guild.id][0] == game_state[3]:
-                        STATE[guild.id][0] = game_state[0]
-                    elif STATE[guild.id][0] == game_state[0]:
-                        STATE[guild.id][0] = game_state[3]
-        if STATE[guild.id][0] == game_state[3]:
-            print('Noped')
-            STATE[guild.id][0] = game_state[0]
-            return
+            await WAIT_FOR_NOPE(guild)
+            if STATE[guild.id][0] == game_state[3]:
+                print('get Noped')
+                STATE[guild.id][0] = game_state[0]
+                await action_message.reply('Failed!')
+                return
+        await action_message.reply('Successful!')
         Favor[guild.id] = True
         FAVOR_USER[guild.id] = player
         STATE[guild.id][0] = game_state[1]
@@ -393,28 +370,13 @@ async def SKIP(guild, game, player, channel):
         action_message = await MAIN_CHANNEL[guild.id].send('skip' + '!')
         await action_message.add_reaction('🚫')
         if NOPE_ABLE[guild.id]:
-            while(True):
-                try:
-                    reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
-                    nope_user = user
-                    print(str(reaction), str(nope_user))
-                    pass
-                except asyncio.TimeoutError:
-                    break
-                else:
-                    message = await MAIN_CHANNEL[guild.id].send(nope_user.mention + ' NOPE!')
-                    await message.add_reaction('🚫')
-                    nope_message = NOPE_MESSAGES[guild.id][nope_user].pop()
-                    HANDS[guild.id][nope_user].remove(nope_message)
-                    await nope_message.delete()
-                    if STATE[guild.id][0] == game_state[3]:
-                        STATE[guild.id][0] = game_state[0]
-                    elif STATE[guild.id][0] == game_state[0]:
-                        STATE[guild.id][0] = game_state[3]
-        if STATE[guild.id][0] == game_state[3]:
-            print('Noped')
-            STATE[guild.id][0] = game_state[0]
-            return
+            await WAIT_FOR_NOPE(guild)
+            if STATE[guild.id][0] == game_state[3]:
+                print('get Noped')
+                STATE[guild.id][0] = game_state[0]
+                await action_message.reply('Failed!')
+                return
+        await action_message.reply('Successful!')
         NEXT_TURN[guild.id] = True
         await TURN_MESSAGE[guild.id].delete()
 
@@ -428,28 +390,13 @@ async def ATTACK(guild, game, player, channel):
         action_message = await MAIN_CHANNEL[guild.id].send('attack ' + PLAYER_TURN[guild.id][1].mention + '!')
         await action_message.add_reaction('🚫')
         if NOPE_ABLE[guild.id]:
-            while(True):
-                try:
-                    reaction, user = await CLIENT.wait_for('reaction_add', timeout=5, check=check)
-                    nope_user = user
-                    print(str(reaction), str(nope_user))
-                    pass
-                except asyncio.TimeoutError:
-                    break
-                else:
-                    message = await MAIN_CHANNEL[guild.id].send(nope_user.mention + ' NOPE!')
-                    await message.add_reaction('🚫')
-                    nope_message = NOPE_MESSAGES[guild.id][nope_user].pop()
-                    HANDS[guild.id][nope_user].remove(nope_message)
-                    await nope_message.delete()
-                    if STATE[guild.id][0] == game_state[3]:
-                        STATE[guild.id][0] = game_state[0]
-                    elif STATE[guild.id][0] == game_state[0]:
-                        STATE[guild.id][0] = game_state[3]
-        if STATE[guild.id][0] == game_state[3]:
-            print('Noped')
-            STATE[guild.id][0] = game_state[0]
-            return
+            await WAIT_FOR_NOPE(guild)
+            if STATE[guild.id][0] == game_state[3]:
+                print('get Noped')
+                STATE[guild.id][0] = game_state[0]
+                await action_message.reply('Failed!')
+                return
+        await action_message.reply('Successful!')
         DOUBLE_TURN[guild.id] += 1
         NEXT_TURN[guild.id] = True
         await TURN_MESSAGE[guild.id].delete()

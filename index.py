@@ -1,5 +1,6 @@
 import os
 from pickle import TRUE
+from tkinter import E
 
 import discord
 from discord.ext import commands
@@ -16,8 +17,6 @@ TOKEN = os.getenv('TOKEN')
 client = discord.Client()
 
 # global vars
-main_channel_name = {}
-default_channel_name = 'boardgame'
 deck = {}
 players = {}
 player_channels = {}
@@ -107,7 +106,7 @@ game_state = {
     ]
 }
 card_pic = {
-    'Exploding Kittens':{
+    'Exploding Kittens': {
         'nope': 'Assets/ExplodingKittens/Nope/',
         'skip': 'Assets/ExplodingKittens/Skip/',
         'attack': 'Assets/ExplodingKittens/Attack/',
@@ -131,16 +130,22 @@ async def on_ready():
     print(f'{client.user} has connected to Discord!')
     guilds = client.guilds
     for guild in guilds:
-        text_channels = guild.text_channels
-        for channel in text_channels:
+        main_channel[guild.id] = None
+        temp_channel = None
+        for channel in guild.text_channels:
             if channel.name == 'boardgame':
                 main_channel[guild.id] = channel
-        for guild in client.guilds:
-            var_init(guild)
+                print(f'{guild.name} has default channel!')
+                break
+            elif channel.name == 'general' or channel == guild.text_channels[0]:
+                temp_channel = channel
+        if main_channel[guild.id] is None:
+            # await temp_channel.send('Please use !setup <text_channel> command first!')
+            pass
+        var_init(guild)
 
 
 def var_init(guild):
-    global main_channel_name
     global deck
     global players
     global player_channels
@@ -165,7 +170,6 @@ def var_init(guild):
     global double_turn
     global future_message
 
-    main_channel_name[guild.id] = default_channel_name
     deck[guild.id] = []
     players[guild.id] = []
     player_channels[guild.id] = {}
@@ -221,8 +225,13 @@ async def on_message(message):
     channel = message.channel
     guild = message.guild
     if str(message.author) != str(client.user):
-        print(str(channel.name), username, user_message)
-        if str(channel.name) == 'boardgame':
+        print(guild.name, channel.name, username, user_message)
+        if '!setup ' in user_message:
+            channel_name = user_message[7:]
+            if main_channel[guild.id] != None:
+                await main_channel[guild.id].delete()
+            main_channel[guild.id] = await guild.create_text_channel(channel_name)
+        elif channel == main_channel[guild.id]:
             if state[guild.id][0] == 'ready':
                 if user_message == '!play' or user_message == '!p':
                     message_to_send = '```Select a game'
@@ -232,9 +241,7 @@ async def on_message(message):
                     message_to_send += '\nc : Cancel```'
                     await channel.send(message_to_send)
                     host_id[guild.id] = message.author.id
-                    print(user_message, username)
             elif state[guild.id][0] == 'waiting' and message.author.id == host_id[guild.id]:
-                print(user_message, username)
                 if user_message == 'c':
                     state[guild.id][0] = 'ready'
                     await channel.send('Cancel')
@@ -248,15 +255,18 @@ async def on_message(message):
                     now_playing[guild.id] = games[int(user_message) - 1]
             elif user_message == 'terminate' or user_message == 'end':
                 await clear_text_channel(client.get_guild(guild.id))
-            elif state[guild.id][0] == game_state[state[guild.id][1]][2]: # bomb
+            # bomb
+            elif state[guild.id][0] == game_state[state[guild.id][1]][2]:
                 index = int(user_message)
                 if index >= len(deck[guild.id]):
                     index = -1
                 if index != -1:
-                    deck[guild.id] = deck[guild.id][:index] + ['bomb'] + deck[guild.id][index:]
+                    deck[guild.id] = deck[guild.id][:index] + \
+                        ['bomb'] + deck[guild.id][index:]
                 else:
                     deck[guild.id] = deck[guild.id] + ['bomb']
                 state[guild.id][0] = 'playing'
+            # favor
             elif state[guild.id][0] == game_state[state[guild.id][1]][1] and message.author == favor_user[guild.id] and int(user_message) - 1 < len(favor_target_list[guild.id]):
                 favor_target[guild.id] = favor_target_list[guild.id][int(
                     user_message) - 1]
@@ -329,20 +339,19 @@ async def on_raw_reaction_add(payload):
     message = await channel.fetch_message(message_id)
     for reaction in message.reactions:
         if str(reaction) == str(payload.emoji):
-            print(str(reaction), str(payload.emoji))
             users = await reaction.users().flatten()
             if client.user not in users:
-                print('not available')
+                print('no event emote')
                 return
             else:
                 break
-    print(payload.member, payload.emoji)
     if str(payload.member) == str(client.user):
         return
+    print(channel.name, payload.member, payload.emoji, ' add')
     player_channels_list = []
     for player in player_channels[guild_id]:
         player_channels_list.append(player_channels[guild_id][player])
-    if str(channel) == 'boardgame':
+    if channel == main_channel[guild_id]:
         if str(payload.emoji) == '☑️':
             if state[guild_id][0] != 'playing' and state[guild_id][0] != 'init':
                 if message_id == join_id[guild_id] and payload.member not in players[guild_id]:
@@ -350,12 +359,12 @@ async def on_raw_reaction_add(payload):
                 if len(players[guild_id]) >= min_players[state[guild_id][1]]:
                     if start_when_ready[guild_id]:
                         state[guild_id][0] = 'init'
-                        print(state)
+                        print(state[guild_id])
         elif str(payload.emoji) == '▶️':
             if user_id == host_id[guild_id]:
                 if len(players[guild_id]) >= min_players[state[guild_id][1]] and len(players[guild_id]) <= max_players[state[guild_id][1]]:
                     state[guild_id][0] = 'init'
-                    print(state)
+                    print(state[guild_id])
                 else:
                     print('not enough players to play')
                     start_when_ready[guild_id] = True
@@ -366,7 +375,6 @@ async def on_raw_reaction_add(payload):
             if state[guild_id][1] == games[0]:
                 init(state[guild_id][1], guild_id)
                 await channel.purge()
-                print(deck[guild_id])
                 guild = client.get_guild(guild_id)
                 for player in players[guild_id]:
                     channel = await create_player_text_channel(guild, player)
@@ -376,7 +384,7 @@ async def on_raw_reaction_add(payload):
                     defuse[guild_id][player] = []
                     nope_messages[guild_id][player] = []
                 for player in player_channels[guild_id]:
-                    message = await player_channels[guild_id][player].send(file=discord.File(card_pic[games[0]]['defuse'] + str(random.randint(1,3)) + '.png'))
+                    message = await player_channels[guild_id][player].send(content='defuse', file=discord.File(card_pic[games[0]]['defuse'] + str(random.randint(1, 3)) + '.png'))
                     hands[guild_id][player].append(message)
                     defuse[guild_id][player].append(message)
                 for i in range(4):
@@ -388,7 +396,7 @@ async def on_raw_reaction_add(payload):
                             add = 3
                         elif deck[guild_id][0] == 'attack':
                             add = 4
-                        message = await player_channels[guild_id][player].send(file=discord.File(card_pic[games[0]][deck[guild_id][0]] + str(random.randint(1,add)) + '.png'))
+                        message = await player_channels[guild_id][player].send(content=deck[guild_id][0], file=discord.File(card_pic[games[0]][deck[guild_id][0]] + str(random.randint(1, add)) + '.png'))
                         if 'card' not in deck[guild_id][0] and deck[guild_id][0] != 'nope':
                             await message.add_reaction('☑️')
                         elif deck[guild_id][0] == 'nope':
@@ -449,7 +457,7 @@ async def on_raw_reaction_add(payload):
                                                          payload=payload, guild_id=guild_id, channel=channel, message_id=message_id)
                 if len(players[guild_id]) == 0:
                     print('end game')
-                    await main_channel.send('The winner is ' + player_turn[guild_id].mention + '!!!')
+                    await main_channel[guild.id].send('The winner is ' + player_turn[guild_id].mention + '!!!')
                     await clear_text_channel(client.get_guild(guild_id))
                     var_init(guild)
 
@@ -461,7 +469,7 @@ async def clear_text_channel(guild):
 
 
 async def create_player_text_channel(guild, user):
-    print(guild, user)
+    print(f'create text channel in {guild} for {user}')
     overwrites = {}
     for role in guild.roles:
         overwrites[role] = discord.PermissionOverwrite(read_messages=False)
@@ -484,7 +492,8 @@ async def on_raw_reaction_remove(payload):
     message_id = payload.message_id
     if user_id == client.user:
         return
-    if str(channel) == 'boardgame':
+    print(channel.name, payload.member, payload.emoji, ' remove')
+    if channel == main_channel[guild_id]:
         if str(payload.emoji) == '☑️':
             if message_id == join_id[guild_id] and payload.member in players[guild_id]:
                 players[guild_id].remove(payload.member)
@@ -497,5 +506,6 @@ async def on_raw_reaction_remove(payload):
                 plays[guild_id][payload.member].remove(message_id)
         else:
             await main_channel[guild_id].send('server owner is now cheating')
+
 
 client.run(TOKEN)
