@@ -1,6 +1,6 @@
 import random
-import time
 import asyncio
+import numpy as np
 
 import discord
 
@@ -51,6 +51,8 @@ async def ExplodingKittens(players,
                            nope_messages,
                            client,
                            discard_pile,
+                           on_special,
+                           on_plays,
                            payload=None, guild_id=None, channel=None, message_id=None,
                            GAME_ACTION=False, user=None,
                            pair=False, triple=False, five=False, container=[]):
@@ -107,11 +109,13 @@ async def ExplodingKittens(players,
     elif five:
         special = 'five'
     if special:
+        on_special[guild_id] = False
         await SPECIAL(GUILD, user, special, container)
     elif GAME_ACTION:
         await game_action(GUILD, 'Exploding Kittens', user)
     else:
         await GAME(payload, guild_id, channel, message_id)
+    on_plays[guild_id] = False
     return (players,
             player_channels,
             plays, hands,
@@ -129,7 +133,9 @@ async def ExplodingKittens(players,
             player_turn,
             future_message,
             nope_able,
-            discard_pile
+            discard_pile,
+            on_special,
+            on_plays
             )
 
 
@@ -142,8 +148,9 @@ async def GAME(payload, guild_id, channel, message_id):
             sender_channel = PLAYER_CHANNELS[guild_id][payload.member]
             sender_message = await sender_channel.fetch_message(message_id)
             card = str(sender_message.content)
+            print(payload.member, 'give', card, 'to', FAVOR_USER[guild_id])
             favor_channel = PLAYER_CHANNELS[guild_id][FAVOR_USER[guild_id]]
-            await ADD_CARD(CLIENT.get_guild(guild_id), favor_channel, payload.member, card)
+            await ADD_CARD(CLIENT.get_guild(guild_id), favor_channel, FAVOR_USER[guild_id], card)
             HANDS[guild_id][payload.member].remove(sender_message)
             for card_message in HANDS[guild_id][payload.member]:
                 await card_message.remove_reaction('🃏', CLIENT.user)
@@ -162,7 +169,7 @@ async def GAME(payload, guild_id, channel, message_id):
     return
 
 
-async def game_action(guild, game, player, special=False):
+async def game_action(guild, game, player):
     print(guild, game, player)
     global Favor
     global NEXT_TURN
@@ -225,8 +232,20 @@ async def game_action(guild, game, player, special=False):
                 message = await PLAYER_CHANNELS[guild.id][PLAYER_TURN[guild.id][0]].send('draw')
                 await message.add_reaction('☑️')
                 TURN_MESSAGE[guild.id] = message
-            if len(PLAYS[guild.id][PLAYER_TURN[guild.id][0]]) != 0:
-                await game_action(guild, game, PLAYER_TURN[guild.id][0])
+
+
+def is_got_bomb(m):
+    return m.author == PLAYER_TURN[GUILD.id][0] and type(m.content) == int
+
+
+async def WAIT_PLACING_BOMB():
+    try:
+        message = await CLIENT.wait_for('message', timeout=60, check=is_got_bomb)
+        index = int(message)
+    except asyncio.TimeoutError:
+        return -1
+    else:
+        return index
 
 
 async def DRAW(guild, game, player, channel):
@@ -242,16 +261,26 @@ async def DRAW(guild, game, player, channel):
                 await MAIN_CHANNEL[guild.id].send(player.mention + ' doesn\'t has a defuse\n' + '😵')
                 PLAYER_TURN[guild.id].remove(player)
                 await DISCARD(guild, card)
+                for hand in HANDS[guild.id][player]:
+                    await DISCARD(guild, hand.content)
             else:
-                await MAIN_CHANNEL[guild.id].send(player.mention + ' has a defuse\n' + 'please enter number between -1 and 99 to put a bomb back to DECK (0 = top of DECK, -1 = bottom of DECK)')
-                STATE[guild.id][0] = game_state[2]
+                await MAIN_CHANNEL[guild.id].send(player.mention + ' has a defuse\n' + 'please enter number between -1 and 99 to put a bomb back to DECK\n(0 = top of DECK, -1 = bottom of DECK)')
+                index = await asyncio.create_task(WAIT_PLACING_BOMB())
+                print('bomb replacing at', index)
+                if index >= len(DECK[guild.id]):
+                    index = -1
+                if index == -1:
+                    DECK[guild.id] = DECK[guild.id] + ['bomb']
+                else:
+                    DECK[guild.id] = DECK[guild.id][:index] + \
+                        ['bomb'] + DECK[guild.id][index:]
                 defuse_message = DEFUSE[guild.id][player].pop()
                 await defuse_message.delete()
                 for card in HANDS[guild.id][player]:
                     if str(card.content) == 'defuse':
                         HANDS[guild.id][player].remove(card)
                         break
-            DISCARD(guild, 'defuse')
+            await DISCARD(guild, 'defuse')
         else:
             await ADD_CARD(guild, channel, player, card)
         NEXT_TURN[guild.id] = True
@@ -416,16 +445,17 @@ async def SPECIAL(guild, player, special, card_list):
         await FIVE(guild, player, channel, card_list)
 
 
-def is_player_turn_reaction(reaction, user, message):
-    return user == PLAYER_TURN[GUILD.id][0]
+def is_player_turn_reaction(reaction, user):
+    return user == PLAYER_TURN[GUILD.id][0] and str(reaction.emoji) == '❌'
 
 
 async def WAIT_SPECIAL():
     try:
         reaction, user = await CLIENT.wait_for('reaction_add', timeout=wait_time, check=is_player_turn_reaction)
-        return reaction.message
     except asyncio.TimeoutError:
         return None
+    else:
+        return reaction.message
 
 
 def is_player_turn_message(m):
@@ -433,27 +463,32 @@ def is_player_turn_message(m):
 
 
 async def WAIT_SELECT_TARGET(targets):
-    message = await CLIENT.wait_for('message', check=is_player_turn_message)
-    index = int(message.content)
-    if index >= 0 and index < len(targets):
-        return targets[index]
+    try:
+        message = await CLIENT.wait_for('message', check=is_player_turn_message)
+    except asyncio.TimeoutError:
+        return targets[0]
+    else:
+        index = int(message.content)
+        if index >= 0 and index < len(targets):
+            return targets[index]
 
 
 async def PAIR(guild, player, channel, card_list):
     messages = []
     for card in card_list:
         message = await channel.send(card)
-        await message.add_reaction('☑️')
+        await message.add_reaction('❌')
         messages.append(message)
-    card_message = await WAIT_SPECIAL()
-    if card_message is None:
-        card_message = messages[0]
+    card_message = await asyncio.create_task(WAIT_SPECIAL())
+    for message in messages:
+        await message.delete()
     card = card_message.content
     counter = 0
     for hand in HANDS[guild.id][player].copy():
         if hand.content == card:
             counter += 1
             HANDS[guild.id][player].remove(hand)
+            await hand.delete()
         if counter == 2:
             break
     PAIR_TARGET_MESSAGE = '```'
@@ -466,9 +501,7 @@ async def PAIR(guild, player, channel, card_list):
             order += 1
     PAIR_TARGET_MESSAGE += '```'
     await MAIN_CHANNEL[guild.id].send(PAIR_TARGET_MESSAGE)
-    target = await WAIT_SELECT_TARGET(targets)
-    for message in messages:
-        await message.delete()
+    target = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
     index = random.randint(0, len(HANDS[guild.id][target]))
     target_message = HANDS[guild.id][target][index]
     card = target_message.content
@@ -482,15 +515,14 @@ async def TRIPLE(guild, player, channel, card_list):
         message = await channel.send(card)
         await message.add_reaction('☑️')
         messages.append(message)
-    card_message = await WAIT_SPECIAL()
-    if card_message is None:
-        card_message = messages[0]
+    card_message = await asyncio.create_task(WAIT_SPECIAL())
     card = card_message.content
     counter = 0
     for hand in HANDS[guild.id][player].copy():
         if hand.content == card:
             counter += 1
             HANDS[guild.id][player].remove(hand)
+            await hand.delete()
         if counter == 3:
             break
     TRIPLE_TARGET_MESSAGE = '```'
@@ -503,7 +535,7 @@ async def TRIPLE(guild, player, channel, card_list):
             order += 1
     TRIPLE_TARGET_MESSAGE += '```'
     await MAIN_CHANNEL[guild.id].send(TRIPLE_TARGET_MESSAGE)
-    target = await WAIT_SELECT_TARGET(targets)
+    target = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
     for message in messages:
         await message.delete()
     index = random.randint(0, len(HANDS[guild.id][target]))
@@ -513,10 +545,20 @@ async def TRIPLE(guild, player, channel, card_list):
     await ADD_CARD(guild, channel, player, card)
 
 
+def check_select_card(m):
+    return m.author == PLAYER_TURN[GUILD.id][0] and m.channel == MAIN_CHANNEL[GUILD.id] and m.content >= 0 and m.content < len(DISCARD_PILE[GUILD.id].unique())
+
+
 async def WAIT_SELECT_CARD():
-    message = await CLIENT.wait_for('message', check=is_player_turn_message)
-    index = message.content
-    return DISCARD_PILE[GUILD.id].unique()[index]
+    discard_unique = np.array(DISCARD_PILE[GUILD.id])
+    discard_unique = list(np.unique(discard_unique))
+    try:
+        message = await CLIENT.wait_for('message', timeout=60, check=check_select_card)
+    except asyncio.TimeoutError:
+        return DISCARD_PILE[GUILD.id].unique()[random.randint(0, len(discard_unique)-1)]
+    else:
+        index = message.content
+        return discard_unique[index]
 
 
 async def FIVE(guild, player, channel, card_list):
@@ -526,7 +568,15 @@ async def FIVE(guild, player, channel, card_list):
                 HANDS[guild.id][player].remove(hand)
                 await hand.delete()
                 break
-    card = await WAIT_SELECT_CARD()
+    discard_unique = np.array(DISCARD_PILE[GUILD.id])
+    discard_unique = list(np.unique(discard_unique))
+    FIVE_MESSAGE = '```'
+    order = 0
+    for card in discard_unique:
+        FIVE_MESSAGE += '\n' + str(order) + ' : ' + str(card)
+        order += 1
+    FIVE_MESSAGE += '```'
+    card = await asyncio.create_task(WAIT_SELECT_CARD())
     await ADD_CARD(guild, channel, player, card)
     for i in range(len(DISCARD_PILE[GUILD.id])):
         card_name = DISCARD_PILE[GUILD.id][i]

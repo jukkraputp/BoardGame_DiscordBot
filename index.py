@@ -1,7 +1,5 @@
 import os
-from pickle import TRUE
-from tkinter import E
-from arrow import now
+import asyncio
 
 import discord
 from discord.ext import commands
@@ -107,6 +105,9 @@ game_state = {
         'bomb'
     ]
 }
+on_special = {}
+on_plays = {}
+plays_order = {}
 card_pic = {
     'Exploding Kittens': {
         'nope': 'Assets/ExplodingKittens/Nope/',
@@ -172,6 +173,9 @@ def var_init(guild):
     global favor_target_list
     global double_turn
     global future_message
+    global on_special
+    global on_plays
+    global plays_order
 
     deck[guild.id] = []
     discard_pile[guild.id] = {}
@@ -188,6 +192,8 @@ def var_init(guild):
     next_turn[guild.id] = False
     temp_list[guild.id] = []
     turn_message[guild.id] = None
+    on_plays[guild.id] = False
+    plays_order[guild.id] = []
 
     # Expolding Kittens
     defuse[guild.id] = {}
@@ -199,12 +205,15 @@ def var_init(guild):
     favor_target_list[guild.id] = []
     double_turn[guild.id] = 0
     future_message[guild.id] = None
+    on_special[guild.id] = False
 
     # ----------------------------------------------------------------
 
 
 @client.event
 async def on_message(message):
+    if on_plays[message.guild.id]:
+        return
     global players
     global player_channels
     global plays, hands
@@ -224,6 +233,8 @@ async def on_message(message):
     global future_message
     global nope_able
     global nope_messages
+    global on_special
+
     username = str(message.author).split('#')[0]
     user_message = str(message.content)
     channel = message.channel
@@ -235,7 +246,7 @@ async def on_message(message):
             channel_name = user_message[7:]
             if main_channel[guild.id] != None:
                 await main_channel[guild.id].delete()
-            main_channel[guild.id] = await guild.create_text_channel(channel_name)
+            main_channel[guild.id] = await asyncio.create_task(guild.create_text_channel(channel_name))
         elif channel == main_channel[guild.id]:
             if state[guild.id][0] == 'ready':
                 if user_message == '!play' or user_message == '!p':
@@ -260,17 +271,6 @@ async def on_message(message):
                     now_playing[guild.id] = games[int(user_message) - 1]
             elif user_message == 'terminate' or user_message == 'end':
                 await clear_text_channel(client.get_guild(guild.id))
-            # bomb
-            elif state[guild.id][0] == game_state[state[guild.id][1]][2]:
-                index = int(user_message)
-                if index >= len(deck[guild.id]):
-                    index = -1
-                if index != -1:
-                    deck[guild.id] = deck[guild.id][:index] + \
-                        ['bomb'] + deck[guild.id][index:]
-                else:
-                    deck[guild.id] = deck[guild.id] + ['bomb']
-                state[guild.id][0] = 'playing'
             # favor
             elif state[guild.id][0] == game_state[state[guild.id][1]][1] and message.author == favor_user[guild.id] and int(user_message) - 1 < len(favor_target_list[guild.id]):
                 favor_target[guild.id] = favor_target_list[guild.id][int(
@@ -280,17 +280,32 @@ async def on_message(message):
             if state[guild.id][1] == games[0]:
                 if message.author == player_turn[guild.id][0]:
                     if prefix == '@':
+                        status1 = favor[guild.id]
+                        status2 = on_special[guild.id]
+                        print(status1, status2)
+                        while(favor[guild.id] or on_special[guild.id]):
+                            pass
+                        if favor[guild.id] != status1:
+                            print('favor', favor[guild.id])
+                        if on_special[guild.id] != status1:
+                            print('on_special', on_special[guild.id])
                         if message.content == '@pair' or message.content == '@double':
                             result = check_pair(guild, message.author)
                             if result:
+                                print('pass')
+                                on_special[guild.id] = True
                                 await EXPLODINGKITTENS(guild_id=guild.id, user=message.author, pair=True, container=result)
                         elif message.content == '@triple' or message.content == '@tripple' or message.content == '@three':
                             result = check_triple(guild, message.author)
                             if result:
+                                print('pass')
+                                on_special[guild.id] = True
                                 await EXPLODINGKITTENS(guild_id=guild.id, user=message.author, triple=True, container=result)
                         elif message.content == '@five' or message.content == '@penta':
                             result = check_five(guild, message.author)
                             if result:
+                                print('pass')
+                                on_special[guild.id] = True
                                 await EXPLODINGKITTENS(guild_id=guild.id, user=message.author, five=True, container=result)
                     else:
                         await message.delete()
@@ -363,6 +378,8 @@ async def on_raw_reaction_add(payload):
     global future_message
     global nope_able
     global nope_messages
+    global on_special
+
     channel_id = payload.channel_id
     guild_id = payload.guild_id
     user_id = payload.user_id
@@ -450,12 +467,13 @@ async def on_raw_reaction_add(payload):
     elif channel in player_channels_list:
         if state[guild_id][1] == games[0]:
             if state[guild_id][0] != game_state[state[guild_id][1]][2]:
-                await EXPLODINGKITTENS(payload=payload, guild_id=guild_id, channel=channel, message_id=message_id)
-                if len(players[guild_id]) == 1:
-                    print('end game')
-                    await main_channel[guild.id].send('The winner is ' + player_turn[guild_id].mention + '!!!')
-                    await clear_text_channel(client.get_guild(guild_id))
-                    var_init(guild)
+                if payload.member == player_turn[guild_id][0]:
+                    await EXPLODINGKITTENS(payload=payload, guild_id=guild_id, channel=channel, message_id=message_id)
+                    if len(player_turn[guild_id]) == 1:
+                        print('end game')
+                        await main_channel[guild.id].send('The winner is ' + player_turn[guild_id].mention + '!!!')
+                        await clear_text_channel(client.get_guild(guild_id))
+                        var_init(guild)
 
 
 async def clear_text_channel(guild):
@@ -506,6 +524,15 @@ async def on_raw_reaction_remove(payload):
             await main_channel[guild_id].send('server owner is now cheating')
 
 
+async def is_play_order(guild_id, message_id):
+    global on_plays
+    global plays_order
+
+    if not on_plays[guild_id] and plays_order[guild_id][0] == message_id:
+        return
+    await is_play_order(guild_id, message_id)
+
+
 async def EXPLODINGKITTENS(payload=None, guild_id=None, channel=None, message_id=None,
                            GAME_ACTION=False, user=None,
                            pair=False, triple=False, five=False, container=[]):
@@ -529,7 +556,16 @@ async def EXPLODINGKITTENS(payload=None, guild_id=None, channel=None, message_id
     global nope_able
     global nope_messages
     global discard_pile
+    global on_special
+    global on_plays
 
+    if on_plays[guild_id]:
+        print('action wait')
+        plays_order[guild_id].append(message_id)
+        await asyncio.create_task(is_play_order(guild_id, message_id))
+
+    on_plays[guild_id] = True
+    print('action start')
     [players,
      player_channels,
      plays, hands,
@@ -547,29 +583,45 @@ async def EXPLODINGKITTENS(payload=None, guild_id=None, channel=None, message_id
      player_turn,
      future_message,
      nope_able,
-     discard_pile] = await ExplodingKittens(players,
-                                            player_channels,
-                                            plays, hands,
-                                            favor,
-                                            favor_user,
-                                            favor_target,
-                                            favor_target_list,
-                                            state,
-                                            main_channel,
-                                            turn_message,
-                                            deck,
-                                            defuse,
-                                            double_turn,
-                                            next_turn,
-                                            player_turn,
-                                            future_message,
-                                            nope_able,
-                                            nope_messages,
-                                            client,
-                                            discard_pile,
-                                            payload=payload, guild_id=guild_id, channel=channel, message_id=message_id,
-                                            GAME_ACTION=GAME_ACTION, user=user,
-                                            pair=pair, triple=triple, five=five, container=container)
+     discard_pile,
+     on_special,
+     on_plays] = await asyncio.create_task(ExplodingKittens(players,
+                                                            player_channels,
+                                                            plays, hands,
+                                                            favor,
+                                                            favor_user,
+                                                            favor_target,
+                                                            favor_target_list,
+                                                            state,
+                                                            main_channel,
+                                                            turn_message,
+                                                            deck,
+                                                            defuse,
+                                                            double_turn,
+                                                            next_turn,
+                                                            player_turn,
+                                                            future_message,
+                                                            nope_able,
+                                                            nope_messages,
+                                                            client,
+                                                            discard_pile,
+                                                            on_special,
+                                                            on_plays,
+                                                            payload=payload, guild_id=guild_id, channel=channel, message_id=message_id,
+                                                            GAME_ACTION=GAME_ACTION, user=user,
+                                                            pair=pair, triple=triple, five=five, container=container))
+    print('action end', on_plays[guild_id])
+    if payload is not None:
+        if str(payload.emoji) == '☑️':
+            emoji = payload.emoji
+            payload = {}
+            if len(plays[guild_id][player_turn[guild_id][0]]) != 0:
+                payload.member = player_turn[guild_id][0]
+                payload.emoji = emoji
+                await EXPLODINGKITTENS(payload=payload,
+                                       guid_id=guild_id,
+                                       channel=player_channels[guild_id][player_turn[guild_id][0]],
+                                       message_id=plays[guild_id][player_turn[guild_id][0]][0])
 
 
 client.run(TOKEN)
