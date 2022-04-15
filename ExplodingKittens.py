@@ -129,7 +129,7 @@ async def ExplodingKittens(players,
             player_turn,
             future_message,
             nope_able,
-            nope_messages,
+            discard_pile
             )
 
 
@@ -143,18 +143,7 @@ async def GAME(payload, guild_id, channel, message_id):
             sender_message = await sender_channel.fetch_message(message_id)
             card = str(sender_message.content)
             favor_channel = PLAYER_CHANNELS[guild_id][FAVOR_USER[guild_id]]
-            add = 1
-            if card == 'nope':
-                add = 5
-            elif card == 'defuse' or card == 'see the future' or card == 'shuffle' or card == 'favor' or card == 'skip' or card == 'bomb':
-                add = 3
-            elif card == 'attack':
-                add = 4
-            card_message = await favor_channel.send(card_pic[card])
-            if 'card' not in card and card != 'defuse' and card != 'nope':
-                await card_message.add_reaction('☑️')
-            HANDS[guild_id][FAVOR_USER[guild_id]].append(content=card, file=discord.File(
-                card_pic['Exploding Kittens'][card] + str(random.randint(1, add)) + '.png'))
+            await ADD_CARD(CLIENT.get_guild(guild_id), favor_channel, payload.member, card)
             HANDS[guild_id][payload.member].remove(sender_message)
             for card_message in HANDS[guild_id][payload.member]:
                 await card_message.remove_reaction('🃏', CLIENT.user)
@@ -439,13 +428,13 @@ async def WAIT_SPECIAL():
         return None
 
 
-def is_player_turnNchannel_message(m):
-    return m.author == PLAYER_TURN[GUILD.id][0] and PLAYER_CHANNELS[GUILD.id][m.author] == m.channel
+def is_player_turn_message(m):
+    return m.author == PLAYER_TURN[GUILD.id][0] and m.channel == MAIN_CHANNEL[GUILD.id]
 
 
 async def WAIT_SELECT_TARGET(targets):
-    message = await CLIENT.wait_for('message', check=is_player_turnNchannel_message)
-    index = int(message.content) - 1
+    message = await CLIENT.wait_for('message', check=is_player_turn_message)
+    index = int(message.content)
     if index >= 0 and index < len(targets):
         return targets[index]
 
@@ -473,7 +462,7 @@ async def PAIR(guild, player, channel, card_list):
     for member in PLAYERS[guild.id]:
         if member != player:
             targets.append(member)
-            FAVOR_TARGET_message += '\n' + str(order) + ' : ' + str(member)
+            PAIR_TARGET_MESSAGE += '\n' + str(order) + ' : ' + str(member)
             order += 1
     PAIR_TARGET_MESSAGE += '```'
     await MAIN_CHANNEL[guild.id].send(PAIR_TARGET_MESSAGE)
@@ -510,7 +499,7 @@ async def TRIPLE(guild, player, channel, card_list):
     for member in PLAYERS[guild.id]:
         if member != player:
             targets.append(member)
-            FAVOR_TARGET_message += '\n' + str(order) + ' : ' + str(member)
+            TRIPLE_TARGET_MESSAGE += '\n' + str(order) + ' : ' + str(member)
             order += 1
     TRIPLE_TARGET_MESSAGE += '```'
     await MAIN_CHANNEL[guild.id].send(TRIPLE_TARGET_MESSAGE)
@@ -522,10 +511,6 @@ async def TRIPLE(guild, player, channel, card_list):
     card = target_message.content
     await REMOVE_CARD(guild, target_message, target, card)
     await ADD_CARD(guild, channel, player, card)
-
-
-def is_player_turn_message(m):
-    return m.author == PLAYER_TURN[GUILD.id][0] and m.channel == MAIN_CHANNEL[GUILD.id]
 
 
 async def WAIT_SELECT_CARD():

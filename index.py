@@ -283,15 +283,15 @@ async def on_message(message):
                         if message.content == '@pair' or message.content == '@double':
                             result = check_pair(guild, message.author)
                             if result:
-                                await EXPLODINGKITTENS(pair=True, container=result)
+                                await EXPLODINGKITTENS(guild_id=guild.id, user=message.author, pair=True, container=result)
                         elif message.content == '@triple' or message.content == '@tripple' or message.content == '@three':
                             result = check_triple(guild, message.author)
                             if result:
-                                await EXPLODINGKITTENS(triple=True, container=result)
+                                await EXPLODINGKITTENS(guild_id=guild.id, user=message.author, triple=True, container=result)
                         elif message.content == '@five' or message.content == '@penta':
                             result = check_five(guild, message.author)
                             if result:
-                                await EXPLODINGKITTENS(five=True, container=result)
+                                await EXPLODINGKITTENS(guild_id=guild.id, user=message.author, five=True, container=result)
                     else:
                         await message.delete()
                 else:
@@ -508,9 +508,7 @@ async def on_raw_reaction_remove(payload):
 
 async def EXPLODINGKITTENS(payload=None, guild_id=None, channel=None, message_id=None,
                            GAME_ACTION=False, user=None,
-                           pair=False,
-                           triple=False,
-                           five=False):
+                           pair=False, triple=False, five=False, container=[]):
     global players
     global player_channels
     global plays, hands
@@ -549,32 +547,29 @@ async def EXPLODINGKITTENS(payload=None, guild_id=None, channel=None, message_id
      player_turn,
      future_message,
      nope_able,
-     nope_messages,
      discard_pile] = await ExplodingKittens(players,
-                                             player_channels,
-                                             plays, hands,
-                                             favor,
-                                             favor_user,
-                                             favor_target,
-                                             favor_target_list,
-                                             state,
-                                             main_channel,
-                                             turn_message,
-                                             deck,
-                                             defuse,
-                                             double_turn,
-                                             next_turn,
-                                             player_turn,
-                                             future_message,
-                                             nope_able,
-                                             nope_messages,
-                                             client,
-                                             discard_pile,
-                                             payload=payload, guild_id=guild_id, channel=channel, message_id=message_id,
-                                             GAME_ACTION=GAME_ACTION, user=user,
-                                             pair=pair,
-                                             triple=triple,
-                                             five=five)
+                                            player_channels,
+                                            plays, hands,
+                                            favor,
+                                            favor_user,
+                                            favor_target,
+                                            favor_target_list,
+                                            state,
+                                            main_channel,
+                                            turn_message,
+                                            deck,
+                                            defuse,
+                                            double_turn,
+                                            next_turn,
+                                            player_turn,
+                                            future_message,
+                                            nope_able,
+                                            nope_messages,
+                                            client,
+                                            discard_pile,
+                                            payload=payload, guild_id=guild_id, channel=channel, message_id=message_id,
+                                            GAME_ACTION=GAME_ACTION, user=user,
+                                            pair=pair, triple=triple, five=five, container=container)
 
 
 client.run(TOKEN)
