@@ -78,12 +78,14 @@ emotable = []
 player_turn = []
 turn_message = None
 double_turn = False
-next_turn = False
+next_turn = 0
 future_message = None
 nope_able = {}
 defuse = {}
 nope_messages = {}
 favor_target = None
+player_alive = []
+noped = False
 
 
 async def init(player_channels, players):
@@ -116,8 +118,10 @@ async def ExplodingKittens(client, guild, player_channels, players, channel):
     global Client
     global main_channel
     global player_turn
+    global player_alive
     Client = client
     main_channel = channel
+    player_alive = players
     await init(player_channels, players)
     player_turn = players.copy()
     random.shuffle(player_turn)
@@ -125,79 +129,96 @@ async def ExplodingKittens(client, guild, player_channels, players, channel):
     return winner
 
 
-async def turn(player, player_channels):
+async def print_turn(turn_list):
+    for turn in turn_list:
+        print(str(turn))
+
+
+async def turn(player, player_channels, messages=[]):
     global turn_message
     global emotable
-    await main_channel.send(player.mention + ' turn!')
-    channel = player_channels[player]
-    turn_message = await channel.send('draw')
-    await turn_message.add_reaction('☑️')
-    emotable.append(turn_message)
-    print(emotable, turn_message)
-    messages = [turn_message]
-    for card_message in hands[player]:
-        messages.append(card_message)
-        card = card_message.content
-        if card == 'attack' or card == 'skip' or card == 'shuffle' or card == 'see the future' or card == 'favor':
-            await card_message.add_reaction('☑️')
-            emotable.append(card_message)
-    [action, action_message] = await asyncio.create_task(ACTION())
-    print(action, action_message)
-    for message in messages:
-        await message.clear_reactions()
-        if message in emotable:
-            emotable.remove(message)
+    global player_turn
+    global player_alive
+    global next_turn
+    global double_turn
+    await print_turn(player_turn)
+    if messages == []:
+        await main_channel.send(player.mention + ' turn!')
+        channel = player_channels[player]
+        for card_message in hands[player]:
+            messages.append(card_message)
+            card = card_message.content
+            if card == 'attack' or card == 'skip' or card == 'shuffle' or card == 'see the future' or card == 'favor':
+                await card_message.add_reaction('☑️')
+                emotable.append(card_message)
+        turn_message = await channel.send('draw')
+        await turn_message.add_reaction('☑️')
+        emotable.append(turn_message)
+    if double_turn:
+        player_turn = [player_turn[0]] + player_turn
+        double_turn = False
+    
+    print('ACITON!')
+    action, action_message = await asyncio.create_task(ACTION())
+    print(action)
     if action == 'attack':
-        await ATTACK(player, channel)
+        await ATTACK(player, player_channels)
     elif action == 'skip':
-        await SKIP(player, channel)
+        await SKIP(player, player_channels)
     elif action == 'see the future':
-        await SEE_THE_FUTURE(player, channel)
+        await SEE_THE_FUTURE(player, player_channels)
     elif action == 'shuffle':
-        await SHUFFLE(player, channel)
+        await SHUFFLE(player, player_channels)
     elif action == 'favor':
-        await FAVOR(player, channel)
+        await FAVOR(player, player_channels)
     elif action == 'draw':
-        await DRAW(player, channel)
-        temp = list(np.unique(np.array(player_turn.copy())))
-        if len(temp) == 1:
-            return temp[0]
+        await DRAW(player, player_channels)
+        if len(player_alive) == 1:
+            return player_alive[0]
     if action != 'draw':
         hands[player].remove(action_message)
         await DISCARD(action)
-    await action_message.delete()
-    player_turn.append(player_turn[0])
+    
+    
     if next_turn:
+        if player_turn[0] != player_turn[1]:
+            player_turn.append(player_turn[0])
         player_turn = player_turn[1:]
-        next_turn = False
-    if double_turn:
-        player_turn = player_turn[0] + player_turn
-        double_turn = False
-    return await turn(player_turn[0], player_channels)
-
+        next_turn -= 1
+        for message in messages:
+            await message.clear_reactions()
+            if message in emotable:
+                emotable.remove(message)
+        messages = []
+    else:
+        messages.remove(action_message)
+    await action_message.delete()
+    return await turn(player_turn[0], player_channels, messages)
 
 
 async def ACTION():
     global turn_message
-    print('ACTION!')
-    while(True):
-        try:
-            reaction, user = await Client.wait_for('reaction_add', timeout=60, check=is_player_turn_reaction)
-        except asyncio.TimeoutError:
-            return ['draw', turn_message]
-        else:
-            message = reaction.message
-            return [message.content, message]
+    try:
+        print('wait reaction')
+        reaction, user = await Client.wait_for('reaction_add', timeout=60, check=is_player_turn_reaction)
+        print(str(user), str(reaction))
+    except asyncio.TimeoutError:
+        return 'draw', turn_message
+    else:
+        message = reaction.message
+        return message.content, message
 
 
 def is_emotable(reaction, user):
     message = reaction.message
-    print(message, emotable)
     return message in emotable
 
+
 def is_player_turn_reaction(reaction, user):
-    message = reaction.message
-    print(user, player_turn[0])
+    if user == Client.user:
+        return False
+    global player_turn
+    print(str(user), str(player_turn[0]))
     return user == player_turn[0] and is_emotable(reaction, user)
 
 
@@ -215,7 +236,7 @@ async def WAIT_PLACING_BOMB():
         return index
 
 
-async def DRAW(player, channel):
+async def DRAW(player, player_channels):
     global next_turn
     global player_turn
     global deck
@@ -227,11 +248,13 @@ async def DRAW(player, channel):
         if len(defuse[player]) == 0:
             await main_channel.send(player.mention + ' doesn\'t has a defuse\n' + '😵')
             player_turn.remove(player)
+            player_alive.remove(player)
             await DISCARD(card)
             for hand in hands[player]:
                 await DISCARD(hand.content)
         else:
             await main_channel.send(player.mention + ' has a defuse\n' + 'please enter number between -1 and 99 to put a bomb back to deck\n(0 = top of deck, -1 = bottom of deck)')
+            print('bomb')
             index = await asyncio.create_task(WAIT_PLACING_BOMB())
             print('bomb replacing at', index)
             if index >= len(deck):
@@ -249,11 +272,12 @@ async def DRAW(player, channel):
                     break
         await DISCARD('defuse')
     else:
-        await ADD_CARD(channel, player, card)
-    next_turn = True
+        await ADD_CARD(player_channels[player], player, card)
+    next_turn += 1
 
 
 async def WAIT_FOR_NOPE():
+    global noped
     while(True):
         try:
             reaction, user = await Client.wait_for('reaction_add', timeout=wait_time, check=check)
@@ -282,13 +306,14 @@ def check(reaction, user):
 
 async def SEE_THE_FUTURE(player, player_channels):
     global future_message
+    global noped
     action_message = await main_channel.send('see the future' + '!')
     await action_message.add_reaction('🚫')
     if nope_able[player]:
         await WAIT_FOR_NOPE()
-        if noped == False:
+        if noped:
             print('get Noped')
-            noped = True
+            noped = False
             await action_message.reply('Failed!')
             return
     await action_message.reply('Successful!')
@@ -301,22 +326,23 @@ async def SEE_THE_FUTURE(player, player_channels):
 
 
 async def SHUFFLE(player, player_channels):
+    global noped
     action_message = await main_channel.send('shuffle' + '!')
     await action_message.add_reaction('🚫')
     if nope_able[player]:
         await WAIT_FOR_NOPE()
-        if noped == False:
+        if noped:
             print('get Noped')
-            noped = True
+            noped = False
             await action_message.reply('Failed!')
             return
     await action_message.reply('Successful!')
     random.shuffle(deck)
-    return
 
 
 def is_player_turn_message(message):
     return message.author == player_turn[0] and is_main_channel(message)
+
 
 def is_main_channel(message):
     return message.channel == main_channel
@@ -333,39 +359,41 @@ async def WAIT_SELECT_FAVOR_TARGET(targets):
 
 
 def is_favor_target(reaction, user):
-    return user == favor_target
+    return str(reaction) == '🃏'
+
 
 async def WAIT_SELECT_FAVOR_CARD():
     try:
         reaction, user = await Client.wait_for('reaction_add', timeout=60, check=is_favor_target)
     except asyncio.TimeoutError:
-        pass
+        return None
     else:
         message = reaction.message
         return message
 
 
 async def FAVOR(player, player_channels):
+    global noped
     action_message = await main_channel.send('favor' + '!')
     await action_message.add_reaction('🚫')
     if nope_able[player]:
         await WAIT_FOR_NOPE()
-        if noped == False:
+        if noped:
             print('get Noped')
-            noped = True
+            noped = False
             await action_message.reply('Failed!')
             return
     await action_message.reply('Successful!')
     FAVOR_TARGET_message = '```'
     order = 0
-    players = list(np.unique(np.array(player_turn.copy())))
-    for member in players:
+    targets = []
+    for member in player_alive:
         if member != player:
+            targets.append(member)
             FAVOR_TARGET_message += '\n' + str(order) + ' : ' + str(member)
             order += 1
     FAVOR_TARGET_message += '```'
-    await main_channel.send(FAVOR_TARGET_message) 
-    targets = players.copy().remove(player)
+    await main_channel.send(FAVOR_TARGET_message)
     target = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
     target_channel = player_channels[target]
     messages = []
@@ -374,6 +402,8 @@ async def FAVOR(player, player_channels):
         emotable.append(card_message)
         messages.append(card_message)
     target_message = await asyncio.create_task(WAIT_SELECT_FAVOR_CARD())
+    if target_message is None:
+        target_message = hands[target][random.randint(0,len(hands[target]) - 1)]
     for message in messages:
         await message.clear_reaction('🃏')
         emotable.remove(message)
@@ -381,19 +411,23 @@ async def FAVOR(player, player_channels):
     await REMOVE_CARD(target_message, target, favor_card)
     await ADD_CARD(player_channels[player], player, favor_card)
 
+
 async def SKIP(player, player_channels):
     global next_turn
     global turn_message
+    global noped
+    global emotable
     action_message = await main_channel.send('skip' + '!')
     await action_message.add_reaction('🚫')
     if nope_able[player]:
         await WAIT_FOR_NOPE()
-        if noped == False:
+        if noped:
             print('get Noped')
-            noped = True
+            noped = False
             await action_message.reply('Failed!')
     await action_message.reply('Successful!')
-    next_turn = True
+    next_turn += 1
+    emotable.remove(turn_message)
     await turn_message.delete()
 
 
@@ -401,18 +435,21 @@ async def ATTACK(player, player_channels):
     global next_turn
     global double_turn
     global turn_message
+    global noped
+    global emotable
     action_message = await main_channel.send('attack ' + player_turn[1].mention + '!')
     await action_message.add_reaction('🚫')
     if nope_able[player]:
         await WAIT_FOR_NOPE()
-        if noped == False:
+        if noped:
             print('get Noped')
-            noped = True
+            noped = False
             await action_message.reply('Failed!')
             return
     await action_message.reply('Successful!')
-    double_turn += 1
-    next_turn = True
+    double_turn = True
+    next_turn += 1
+    emotable.remove(turn_message)
     await turn_message.delete()
 
 
@@ -439,13 +476,13 @@ async def SPECIAL(guild, player, special, card_list, player_channels):
         await FIVE(guild, player, channel, card_list)
 
 
-def is_player_turn_reaction(reaction, user):
+def is_player_turn_reaction_special(reaction, user):
     return user == player_turn[0] and str(reaction.emoji) == '❌'
 
 
 async def WAIT_SPECIAL():
     try:
-        reaction, user = await Client.wait_for('reaction_add', timeout=wait_time, check=is_player_turn_reaction)
+        reaction, user = await Client.wait_for('reaction_add', timeout=wait_time, check=is_player_turn_reaction_special)
     except asyncio.TimeoutError:
         return None
     else:
@@ -488,7 +525,7 @@ async def PAIR(guild, player, channel, card_list):
     PAIR_TARGET_MESSAGE = '```'
     order = 0
     targets = []
-    players = list(np.unique(np.array(player_turn.copy())))
+    players = player_alive
     for member in players:
         if member != player:
             targets.append(member)
@@ -523,7 +560,7 @@ async def TRIPLE(guild, player, channel, card_list):
     TRIPLE_TARGET_MESSAGE = '```'
     order = 0
     targets = []
-    players = list(np.unique(np.array(player_turn.copy())))
+    players = player_alive
     for member in players:
         if member != player:
             targets.append(member)
@@ -595,7 +632,7 @@ async def ADD_CARD(channel, player, card):
     if card == 'defuse':
         defuse[player].append(card_message)
     elif card == 'nope':
-        temp = list(np.unique(np.array(player_turn.copy())))
+        temp = player_alive
         for user in temp:
             nope_able[user] += 1
         nope_messages[player].append(card_message)
@@ -606,7 +643,7 @@ async def REMOVE_CARD(message, player, card):
     if card == 'defuse':
         defuse[player].remove(message)
     elif card == 'nope':
-        temp = list(np.unique(np.array(player_turn.copy())))
+        temp = player_alive
         for user in temp:
             nope_able[user] -= 1
         nope_messages[player].remove(message)

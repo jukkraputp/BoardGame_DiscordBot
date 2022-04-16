@@ -143,6 +143,7 @@ async def wait_add_player(game):
                 for player in players[guild]:
                     channel = await create_player_text_channel(guild, player)
                     player_channels[guild][player] = channel
+                await main_channel[guild].purge()
                 # game start ----------------------------------------------------------------
                 winner = await asyncio.create_task(EXPLODINGKITTENS(guild))
                 print('The winner is', winner, '!!!')
