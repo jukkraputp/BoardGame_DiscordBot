@@ -81,7 +81,7 @@ async def on_message(message):
         sys.exit()
     
     if str(message.author) != str(client.user):
-        print(guild.name, channel.name, username, user_message)
+        print('from index.py', guild.name, channel.name, username, user_message)
         if '!setup ' in user_message:
             channel_name = user_message[7:]
             if main_channel[guild] != None:

@@ -1,6 +1,7 @@
 import random
 import asyncio
 import numpy as np
+import sys
 
 import discord
 
@@ -86,12 +87,19 @@ nope_messages = {}
 favor_target = None
 player_alive = []
 noped = False
-
+pair = {}
+triple = {}
+five = {}
+all_card_list = {}
 
 async def init(player_channels, players):
     global deck
     global nope_able
     global defuse
+    global pair
+    global triple
+    global five
+    global all_card_list
 
     deck = init_deck.copy()
     random.shuffle(deck)
@@ -101,11 +109,18 @@ async def init(player_channels, players):
         defuse[player] = []
         nope_able[player] = 0
         nope_messages[player] = []
+        pair[player] = False
+        triple[player] = False
+        five[player] = {}
+        all_card_list[player] = {}
+        for i in range(5):
+            all_card_list[player]['card' + str(i+1)] = 0
         await ADD_CARD(channel, player, 'defuse')
     for player in players:
         channel = player_channels[player]
         for i in range(4):
-            await ADD_CARD(channel, player, deck[0])
+            card = deck[0]
+            await ADD_CARD(channel, player, card)
             deck = deck[1:]
     for i in range(len(players) - 1):
         deck.append('bomb')
@@ -125,6 +140,7 @@ async def ExplodingKittens(client, guild, player_channels, players, channel):
     await init(player_channels, players)
     player_turn = players.copy()
     random.shuffle(player_turn)
+
     winner = await asyncio.create_task(turn(player_turn[0], player_channels))
     return winner
 
@@ -141,6 +157,11 @@ async def turn(player, player_channels, messages=[]):
     global player_alive
     global next_turn
     global double_turn
+    global pair
+    global triple
+    global five
+    global all_card_list
+    print(all_card_list[player])
     await print_turn(player_turn)
     if messages == []:
         await main_channel.send(player.mention + ' turn!')
@@ -151,16 +172,36 @@ async def turn(player, player_channels, messages=[]):
             if card == 'attack' or card == 'skip' or card == 'shuffle' or card == 'see the future' or card == 'favor':
                 await card_message.add_reaction('☑️')
                 emotable.append(card_message)
+        if pair[player]:
+            pair_message = await channel.send('pair')
+            await pair_message.add_reaction('☑️')
+            emotable.append(pair_message)
+            messages.append(pair_message)
+        if triple[player]:
+            three_of_a_kind_message = await channel.send('three of a kind')
+            await three_of_a_kind_message.add_reaction('☑️')
+            emotable.append(pair_message)
+            messages.append(three_of_a_kind_message)
+        if len(list(five[player].keys())) == 5:
+            five_message = await channel.send('five different cards')
+            await five_message.add_reaction('☑️')
+            emotable.append(five_message)
+            messages.append(five_message)
         turn_message = await channel.send('draw')
         await turn_message.add_reaction('☑️')
         emotable.append(turn_message)
     if double_turn:
         player_turn = [player_turn[0]] + player_turn
         double_turn = False
-    
+
     print('ACITON!')
     action, action_message = await asyncio.create_task(ACTION())
-    print(action)
+    special_action = ['pair', 'three of a kind', 'five different cards']
+    normal_action = ['attack', 'skip', 'see the future', 'shuffle', 'favor']
+    special = False
+    if action in special_action:
+        special = True
+    print(action)    
     if action == 'attack':
         await ATTACK(player, player_channels)
     elif action == 'skip':
@@ -175,11 +216,16 @@ async def turn(player, player_channels, messages=[]):
         await DRAW(player, player_channels)
         if len(player_alive) == 1:
             return player_alive[0]
-    if action != 'draw':
+    elif special:
+        if action == 'three of a kind':
+            action ='triple'
+        elif action == 'five different cards':
+            action = 'five'
+        await SPECIAL(player, action, player_channels)
+    if action in normal_action:
         hands[player].remove(action_message)
         await DISCARD(action)
-    
-    
+
     if next_turn:
         if player_turn[0] != player_turn[1]:
             player_turn.append(player_turn[0])
@@ -193,7 +239,7 @@ async def turn(player, player_channels, messages=[]):
     else:
         messages.remove(action_message)
     await action_message.delete()
-    return await turn(player_turn[0], player_channels, messages)
+    return await asyncio.create_task(turn(player_turn[0], player_channels, messages))
 
 
 async def ACTION():
@@ -240,6 +286,9 @@ async def DRAW(player, player_channels):
     global next_turn
     global player_turn
     global deck
+    global all_card_list
+    global pair
+    global triple
     await main_channel.send('draw' + '!')
     card = deck[0]
     deck = deck[1:]
@@ -287,6 +336,7 @@ async def WAIT_FOR_NOPE():
         except asyncio.TimeoutError:
             break
         else:
+            await DISCARD('nope')
             message = await main_channel.send(nope_user.mention + ' NOPE!')
             await message.add_reaction('🚫')
             nope_message = nope_messages[nope_user].pop()
@@ -374,16 +424,8 @@ async def WAIT_SELECT_FAVOR_CARD():
 
 async def FAVOR(player, player_channels):
     global noped
-    action_message = await main_channel.send('favor' + '!')
-    await action_message.add_reaction('🚫')
-    if nope_able[player]:
-        await WAIT_FOR_NOPE()
-        if noped:
-            print('get Noped')
-            noped = False
-            await action_message.reply('Failed!')
-            return
-    await action_message.reply('Successful!')
+    await main_channel.send('favor' + '!')
+
     FAVOR_TARGET_message = '```'
     order = 0
     targets = []
@@ -395,6 +437,16 @@ async def FAVOR(player, player_channels):
     FAVOR_TARGET_message += '```'
     await main_channel.send(FAVOR_TARGET_message)
     target = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
+    action_message = await main_channel.send(target.mention + '!')
+    await action_message.add_reaction('🚫')
+    if nope_able[player]:
+        await WAIT_FOR_NOPE()
+        if noped:
+            print('get Noped')
+            noped = False
+            await action_message.reply('Failed!')
+            return
+    await action_message.reply('Successful!')
     target_channel = player_channels[target]
     messages = []
     for card_message in hands[target]:
@@ -403,7 +455,8 @@ async def FAVOR(player, player_channels):
         messages.append(card_message)
     target_message = await asyncio.create_task(WAIT_SELECT_FAVOR_CARD())
     if target_message is None:
-        target_message = hands[target][random.randint(0,len(hands[target]) - 1)]
+        target_message = hands[target][random.randint(
+            0, len(hands[target]) - 1)]
     for message in messages:
         await message.clear_reaction('🃏')
         emotable.remove(message)
@@ -456,24 +509,34 @@ async def ATTACK(player, player_channels):
 # \/ special actions ----------------------------------------------------------------
 
 
-async def SPECIAL(guild, player, special, card_list, player_channels):
+async def SPECIAL(player, special, player_channels):
+    global five
+    global all_card_list
     action_message = await main_channel.send(special.upper() + '!')
-    await action_message.add_reaction('🚫')
-    if nope_able:
-        await WAIT_FOR_NOPE(guild)
-        if noped == False:
-            print('get Noped')
-            noped = True
-            await action_message.reply('Failed!')
-            return
-    await action_message.reply('Successful!')
     channel = player_channels[player]
+    card_list = []
     if special == 'pair':
-        await PAIR(guild, player, channel, card_list)
+        for card in all_card_list[player]:
+            if all_card_list[player][card] >= 2:
+                card_list.append(card)
+        await PAIR(player, channel, card_list)
     elif special == 'triple':
-        await TRIPLE(guild, player, channel, card_list)
+        for card in all_card_list[player]:
+            if all_card_list[player][card] >= 3:
+                card_list.append(card)
+        await TRIPLE(player, channel, card_list)
     elif special == 'five':
-        await FIVE(guild, player, channel, card_list)
+        await action_message.add_reaction('🚫')
+        if nope_able[player]:
+            await WAIT_FOR_NOPE()
+            if noped:
+                print('get Noped')
+                noped = False
+                await action_message.reply('Failed!')
+                return
+        await action_message.reply('Successful!')
+        card_list = list(five[player].keys())
+        await FIVE(player, channel, card_list)
 
 
 def is_player_turn_reaction_special(reaction, user):
@@ -501,10 +564,11 @@ async def WAIT_SELECT_TARGET(targets):
     else:
         index = int(message.content)
         if index >= 0 and index < len(targets):
-            return targets[index]
+            return targets[index], message
 
 
-async def PAIR(guild, player, channel, card_list):
+async def PAIR(player, channel, card_list):
+    global all_card_list
     messages = []
     for card in card_list:
         message = await channel.send(card)
@@ -514,6 +578,8 @@ async def PAIR(guild, player, channel, card_list):
     for message in messages:
         await message.delete()
     card = card_message.content
+    all_card_list[player][card] -= 2
+    await DISCARD(card, 2)
     counter = 0
     for hand in hands[player].copy():
         if hand.content == card:
@@ -532,23 +598,38 @@ async def PAIR(guild, player, channel, card_list):
             PAIR_TARGET_MESSAGE += '\n' + str(order) + ' : ' + str(member)
             order += 1
     PAIR_TARGET_MESSAGE += '```'
-    await main_channel.send(PAIR_TARGET_MESSAGE)
-    target = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
+    action_message = await main_channel.send(PAIR_TARGET_MESSAGE)
+    target, wait_nope_message = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
+    await wait_nope_message.add_reaction('🚫')
+    if nope_able[player]:
+        await WAIT_FOR_NOPE()
+        if noped:
+            print('get Noped')
+            noped = False
+            await action_message.reply('Failed!')
+            return
+    await action_message.reply('Successful!')
+    card_list
     index = random.randint(0, len(hands[target]))
     target_message = hands[target][index]
     card = target_message.content
-    await REMOVE_CARD(guild, target_message, target, card)
-    await ADD_CARD(guild, channel, player, card)
+    await REMOVE_CARD(target_message, target, card)
+    await ADD_CARD(channel, player, card)
 
 
 async def TRIPLE(guild, player, channel, card_list):
+    global all_card_list
     messages = []
     for card in card_list:
         message = await channel.send(card)
         await message.add_reaction('☑️')
         messages.append(message)
     card_message = await asyncio.create_task(WAIT_SPECIAL())
+    for message in messages:
+        await message.delete()
     card = card_message.content
+    all_card_list[player][card] -= 3
+    await DISCARD(card, 3)
     counter = 0
     for hand in hands[player].copy():
         if hand.content == card:
@@ -567,10 +648,17 @@ async def TRIPLE(guild, player, channel, card_list):
             TRIPLE_TARGET_MESSAGE += '\n' + str(order) + ' : ' + str(member)
             order += 1
     TRIPLE_TARGET_MESSAGE += '```'
-    await main_channel.send(TRIPLE_TARGET_MESSAGE)
-    target = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
-    for message in messages:
-        await message.delete()
+    action_message = await main_channel.send(TRIPLE_TARGET_MESSAGE)
+    target, wait_nope_message = await asyncio.create_task(WAIT_SELECT_TARGET(targets))
+    await wait_nope_message.add_reaction('🚫')
+    if nope_able[player]:
+        await WAIT_FOR_NOPE()
+        if noped:
+            print('get Noped')
+            noped = False
+            await action_message.reply('Failed!')
+            return
+    await action_message.reply('Successful!')
     index = random.randint(0, len(hands[target]))
     target_message = hands[target][index]
     card = target_message.content
@@ -601,6 +689,7 @@ async def FIVE(guild, player, channel, card_list):
                 hands[player].remove(hand)
                 await hand.delete()
                 break
+        await DISCARD(card)
     discard_unique = np.array(discard_pile)
     discard_unique = list(np.unique(discard_unique))
     FIVE_MESSAGE = '```'
@@ -621,6 +710,9 @@ async def FIVE(guild, player, channel, card_list):
 
 
 async def ADD_CARD(channel, player, card):
+    global all_card_list
+    global pair
+    global triple
     add = 1
     if card == 'nope':
         add = 5
@@ -636,10 +728,14 @@ async def ADD_CARD(channel, player, card):
         for user in temp:
             nope_able[user] += 1
         nope_messages[player].append(card_message)
+    elif 'card' in card:
+        all_card_list[player][card] += 1
+        await check_special(player)
     hands[player].append(card_message)
 
 
 async def REMOVE_CARD(message, player, card):
+    global all_card_list
     if card == 'defuse':
         defuse[player].remove(message)
     elif card == 'nope':
@@ -647,9 +743,33 @@ async def REMOVE_CARD(message, player, card):
         for user in temp:
             nope_able[user] -= 1
         nope_messages[player].remove(message)
+    elif 'card' in card:
+        all_card_list[player][card] -= 1
+        await check_special(player)
     hands[player].remove(message)
     await message.delete()
 
 
-async def DISCARD(card):
-    discard_pile.append(card)
+async def DISCARD(card, n=1):
+    for i in range(n):
+        discard_pile.append(card)
+
+async def check_special(player):
+    global all_card_list
+    global pair
+    global triple
+    global five
+
+    counter = 0
+    pair[player] = False
+    triple[player] = False
+    five[player] = False
+    for card in all_card_list[player]:
+        if all_card_list[player][card] >= 2:
+            pair[player] = True
+        if all_card_list[player][card] >= 3:
+            triple[player] = True
+        if all_card_list[player][card] != 0:
+            counter += 1
+    if counter == 5:
+        five[player] = True
