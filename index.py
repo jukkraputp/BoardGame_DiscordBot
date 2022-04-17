@@ -1,6 +1,7 @@
 import os
 import asyncio
 import sys
+import threading
 
 import discord
 from dotenv import load_dotenv
@@ -76,10 +77,13 @@ async def on_message(message):
     user_message = str(message.content)
     channel = message.channel
     guild = message.guild
+    
     if user_message == 'terminate' or user_message == 'end':
         await clear_text_channel(guild)
+        await main_channel[guild].purge()
         sys.exit()
-    
+    if state[guild][0] == 'playing':
+        return
     if str(message.author) != str(client.user):
         print('from index.py', guild.name, channel.name, username, user_message)
         if '!setup ' in user_message:
@@ -110,21 +114,45 @@ async def on_message(message):
                     state[guild][1] = games[int(user_message) - 1]
                     join_message[guild] = bot_message
 
-                    task_add = asyncio.create_task(wait_add_player(state[guild][1]))
-                    task_remove = asyncio.create_task(wait_remove_player())
+                    state[guild][0] = 'add_remove'
 
+                    """ task_add = asyncio.create_task(wait_add_player(guild))
+                    task_remove = asyncio.create_task(wait_remove_player(guild))
+
+                    #await asyncio.gather(wait_add_player(guild), wait_remove_player(guild))
+                    
                     await task_add
-                    await task_remove
+                    await task_remove """
 
+
+@client.event
+async def on_raw_reaction_add(payload):
+    guild = client.get_guild(payload.guild_id)
+
+    if state[guild][0] == 'add_remove':
+        state[guild][0] = 'remove'
+        await wait_add_player(guild)
+
+@client.event
+async def on_raw_reaction_remove(payload):
+    guild = client.get_guild(payload.guild_id)
+
+    if state[guild][0] == 'remove':
+        state[guild][0] = 'wait'
+        await wait_remove_player(guild)
 
 game_start = False
 
 
-async def wait_add_player(game):
+async def wait_add_player(guild):
     global game_start
+    global state
+
+    print('add')
 
     try:
         reaction, user = await client.wait_for('reaction_add', timeout=600, check=check_emotable)
+        print('add check')
     except asyncio.TimeoutError:
         pass
     else:
@@ -137,32 +165,41 @@ async def wait_add_player(game):
         elif str(reaction) == '▶️' and user == host[guild]:
             game_start = True
         print(game_start, len(players[guild]), min_players[state[guild][1]], max_players[state[guild][1]])
-        if game == games[0]:
+        if state[guild][1] == games[0]:
             if game_start and len(players[guild]) >= min_players[state[guild][1]] and len(players[guild]) <= max_players[state[guild][1]]:
                 print('game start')
                 for player in players[guild]:
                     channel = await create_player_text_channel(guild, player)
                     player_channels[guild][player] = channel
                 await main_channel[guild].purge()
+                state[guild][0] = 'playing'
                 # game start ----------------------------------------------------------------
                 winner = await asyncio.create_task(EXPLODINGKITTENS(guild))
                 print('The winner is', winner, '!!!')
                 # game end ------------------------------------------------------------------
                 var_init(guild)
+                return
             else:
-                await wait_add_player(game)
+                await wait_add_player(state[guild][1])
 
 
-async def wait_remove_player():
+async def wait_remove_player(guild):
     global game_start
+    global state
+
+    print('remove')
+
+    if state[guild][0] != 'waiting':
+        return
 
     try:
-        reaction, user = await client.wait_for('reaction_remove', timeout=600, check=check_emotable)
+        reaction, user = await client.wait_for('reaction_remove', timeout=5, check=check_emotable)
+        print('remove check')
     except asyncio.TimeoutError:
+        print('remove timeout')
         pass
     else:
-        message = reaction.message
-        guild = message.guild
+        print(game_start, len(players[guild]), min_players[state[guild][1]], max_players[state[guild][1]])
         if str(reaction) == '☑️' and reaction.message == join_message[guild]:
             players[guild].remove(user)
             for player in players[guild]:
