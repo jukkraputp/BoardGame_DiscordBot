@@ -85,20 +85,21 @@ async def on_message(message):
     user_message = str(message.content)
     channel = message.channel
     guild = message.guild
+    music_enable = False
 
     if user_message == 'terminate' or user_message == 'end':
         await clear_text_channel(guild)
         await main_channel[guild].purge()
-    elif music_caller is None and user_message[:5] == '!music' and user_message[5] == ' ':
+    elif music_enable and len(user_message) >= 6 and music_caller is None and user_message[:5] == '!music' and user_message[5] == ' ':
         voice_channel = message.author.voice.channel
         if voice_channel is not None:
             music_channel[guild] = voice_channel
         try:
             message = await client.wait_for('message', timeout=60, check=is_call_music)
         except asyncio.TimeoutError:
-            return 'c'
+            command = 'c'
         else:
-            return int(message.content)
+            command = int(message.content)
         music_name = user_message[6:]
         music_queue[guild].append(music_name)
         voice_client = await music_channel.connect()
