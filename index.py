@@ -28,6 +28,9 @@ max_players = {
 start_when_ready = {}
 main_channel = {}
 emotable = {}
+music_channel = {}
+music_queue = {}
+music_caller = {}
 # ----------------------------------------------------------------
 
 
@@ -58,6 +61,9 @@ def var_init(guild):
     global host
     global state
     global start_when_ready
+    global music_channel
+    global music_queue
+    global music_caller
 
     players[guild] = []
     player_channels[guild] = {}
@@ -66,6 +72,9 @@ def var_init(guild):
     state[guild] = ['ready', None]
     start_when_ready[guild] = False
     emotable[guild] = []
+    music_channel[guild] = None
+    music_queue[guild] = []
+    music_caller[guild] = None
 
     # ----------------------------------------------------------------
 
@@ -80,6 +89,20 @@ async def on_message(message):
     if user_message == 'terminate' or user_message == 'end':
         await clear_text_channel(guild)
         await main_channel[guild].purge()
+    elif music_caller is None and user_message[:5] == '!music' and user_message[5] == ' ':
+        voice_channel = message.author.voice.channel
+        if voice_channel is not None:
+            music_channel[guild] = voice_channel
+        try:
+            message = await client.wait_for('message', timeout=60, check=is_call_music)
+        except asyncio.TimeoutError:
+            return 'c'
+        else:
+            return int(message.content)
+        music_name = user_message[6:]
+        music_queue[guild].append(music_name)
+        voice_client = await music_channel.connect()
+        await PLAY_MUSIC(guild, voice_client)    
     if state[guild][0] == 'playing':
         return
     if str(message.author) != str(client.user):
@@ -114,6 +137,15 @@ async def on_message(message):
 
                     state[guild][0] = str(
                         state[guild][1]) + ' waiting for players'
+
+
+def is_call_music(m):
+    return m.author == music_caller[m.guild]
+
+
+async def PLAY_MUSIC(guild, voice_client):
+    pass
+
 
 game_start = False
 
