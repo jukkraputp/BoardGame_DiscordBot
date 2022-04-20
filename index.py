@@ -188,7 +188,7 @@ async def on_raw_reaction_add(payload):
                 if game_start and len(players[guild]) >= min_players[state[guild][1]] and len(players[guild]) <= max_players[state[guild][1]]:
                     print('game start')
                     for player in players[guild]:
-                        channel = await create_player_text_channel(guild, player)
+                        channel = await create_player_dm_channel(guild, player)
                         player_channels[guild][player] = channel
                     await main_channel[guild].purge()
                     state[guild][0] = 'playing'
@@ -241,13 +241,9 @@ async def clear_text_channel(guild):
     state[guild] = ['ready', '']
 
 
-async def create_player_text_channel(guild, user):
-    print(f'create text channel in {guild} for {user}')
-    overwrites = {}
-    for role in guild.roles:
-        overwrites[role] = discord.PermissionOverwrite(read_messages=False)
-    overwrites[user] = discord.PermissionOverwrite(read_messages=True)
-    channel = await guild.create_text_channel(str(user).split('#')[0] + str(user).split('#')[1], overwrites=overwrites)
+async def create_player_dm_channel(user):
+    print(f'create dm channel for {user}')
+    channel = await user.create_dm()
     return channel
 
 
