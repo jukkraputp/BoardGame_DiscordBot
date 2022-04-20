@@ -79,6 +79,12 @@ def var_init(guild):
 
 
 @client.event
+async def on_guild_join(guild):
+    var_init(guild)
+    return
+
+
+@client.event
 async def on_message(message):
     username = str(message.author).split('#')[0]
     user_message = str(message.content)
@@ -86,6 +92,8 @@ async def on_message(message):
     guild = message.guild
     music_enable = False
 
+    if main_channel[guild] == None:
+        return
     if user_message == 'terminate' or user_message == 'end':
         await clear_text_channel(guild)
         await main_channel[guild].purge()
