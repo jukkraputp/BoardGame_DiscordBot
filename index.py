@@ -3,7 +3,6 @@ import asyncio
 
 import discord
 from dotenv import load_dotenv
-from flask import g
 
 from ExplodingKittens import ExplodingKittens
 
@@ -49,7 +48,7 @@ async def on_ready():
             elif channel.name == 'general' or channel == guild.text_channels[0]:
                 temp_channel = channel
         if main_channel[guild] is None:
-            await temp_channel.send('Please use !setup <text_channel> command first!')
+            # await temp_channel.send('Please use !setup <text_channel> command first!')
             pass
         var_init(guild)
 
@@ -103,7 +102,7 @@ async def on_message(message):
         music_name = user_message[6:]
         music_queue[guild].append(music_name)
         voice_client = await music_channel.connect()
-        await PLAY_MUSIC(guild, voice_client)    
+        await PLAY_MUSIC(guild, voice_client)
     if state[guild][0] == 'playing':
         return
     if str(message.author) != str(client.user):
@@ -123,12 +122,12 @@ async def on_message(message):
                     message_to_send += '\nc : Cancel```'
                     await channel.send(message_to_send)
                     host[guild] = message.author
+            elif user_message == 'c':
+                state[guild][0] = 'ready'
+                await channel.send('Cancel')
+                await channel.purge()
             elif state[guild][0] == 'waiting' and message.author == host[guild]:
-                if user_message == 'c':
-                    state[guild][0] = 'ready'
-                    await channel.send('Cancel')
-                    await channel.purge()
-                elif int(user_message) >= 1 and int(user_message) <= len(games):
+                if int(user_message) >= 1 and int(user_message) <= len(games):
                     bot_message = await channel.send('Playing ' + games[int(user_message) - 1] + '!' + '\nClick ☑️ to join!')
                     await bot_message.add_reaction('☑️')
                     await bot_message.add_reaction('▶️')

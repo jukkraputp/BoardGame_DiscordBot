@@ -1,8 +1,5 @@
-from distutils.command.build import build
 import random
 import asyncio
-import numpy as np
-import sys
 
 import discord
 
@@ -99,7 +96,7 @@ async def init(player_channels, players):
             await ADD_CARD(channel, player, card)
             deck = deck[1:]
         # for testing
-        test = True
+        test = False
         if test:
             for j in range(1):
                 for i in range(5):
