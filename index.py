@@ -38,6 +38,7 @@ async def on_ready():
     print(f'{client.user} has connected to Discord!')
     guilds = client.guilds
     for guild in guilds:
+        print('connect to', guild.name)
         main_channel[guild] = None
         temp_channel = None
         for channel in guild.text_channels:
@@ -92,7 +93,7 @@ async def on_message(message):
     guild = message.guild
     music_enable = False
 
-    if main_channel[guild] == None:
+    if main_channel[guild] == None and '!setup' not in user_message:
         return
     if user_message == 'terminate' or user_message == 'end':
         await clear_text_channel(guild)

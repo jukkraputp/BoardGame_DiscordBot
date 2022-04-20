@@ -285,7 +285,7 @@ def is_got_bomb(m):
 async def WAIT_PLACING_BOMB():
     try:
         message = await Client.wait_for('message', timeout=60, check=is_got_bomb)
-        index = int(message)
+        index = int(message.content)
     except asyncio.TimeoutError:
         return -1
     else:
